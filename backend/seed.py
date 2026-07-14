@@ -42,7 +42,7 @@ async def seed() -> None:
             select(UnidadeMedsest).where(UnidadeMedsest.cnpj == "12.345.678/0001-90")
         )
         if existe:
-            print("⚠ Seed já aplicado (unidade principal existe). Abortando.")
+            print("[AVISO] Seed ja aplicado (unidade principal existe). Abortando.")
             return
 
         # --- Unidade ---
@@ -335,10 +335,10 @@ async def seed() -> None:
 
         await db.commit()
 
-    print("✅ Seed concluído com sucesso!")
-    print("   Unidade: MedSest Goiânia")
+    print("[OK] Seed concluido com sucesso!")
+    print("   Unidade: MedSest Goiania")
     print("   Admin:   admin@medsest.com.br / Admin@123")
-    print("   Demais usuários (gestor/técnicos): senha Senha@123")
+    print("   Demais usuarios (gestor/tecnicos): senha Senha@123")
     print("   3 clientes e 5 chamados em estados variados criados.")
 
 

@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -22,7 +23,12 @@ from app.models.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 class Chamado(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "chamados"
 
-    numero_chamado: Mapped[int] = mapped_column(Integer, unique=True, autoincrement=True)
+    # Preenchido pela sequence no banco (SERIAL) — o model apenas espelha o server_default
+    numero_chamado: Mapped[int] = mapped_column(
+        Integer,
+        unique=True,
+        server_default=text("nextval('chamados_numero_chamado_seq')"),
+    )
 
     cliente_id: Mapped[uuid.UUID] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("clientes.id"), nullable=False, index=True
