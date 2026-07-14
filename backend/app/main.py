@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
+from app.routers import auth
+from app.utils.exceptions import register_exception_handlers
 import os
 
 
@@ -38,6 +40,9 @@ app.add_middleware(
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
+# --- Handlers de erro padrão {detail, code} ---
+register_exception_handlers(app)
+
 
 @app.get("/api/health", tags=["health"])
 async def health_check():
@@ -46,6 +51,6 @@ async def health_check():
 
 
 # --- Routers ---
-# Serão registrados nas próximas sessões:
-# from app.routers import auth, chamados, validacao_publica, ...
-# app.include_router(auth.router)
+app.include_router(auth.router)
+# Próximas sessões: chamados, validacao_publica, setores, cargos, fotos,
+# usuarios, clientes, unidades, dashboard, exportacao.
