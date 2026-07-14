@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import auth
+from app.routers import auth, clientes, unidades, usuarios
 from app.utils.exceptions import register_exception_handlers
 import os
 
@@ -52,5 +52,8 @@ async def health_check():
 
 # --- Routers ---
 app.include_router(auth.router)
+app.include_router(unidades.router)
+app.include_router(usuarios.router)
+app.include_router(clientes.router)
 # Próximas sessões: chamados, validacao_publica, setores, cargos, fotos,
-# usuarios, clientes, unidades, dashboard, exportacao.
+# dashboard, exportacao.

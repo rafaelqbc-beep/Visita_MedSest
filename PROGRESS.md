@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-14
-**Sessão atual:** #2
+**Sessão atual:** #3
 **Status:** Em desenvolvimento
 
 ---
@@ -13,9 +13,9 @@
 - [x] Setup inicial (FastAPI, SQLAlchemy, Alembic)
 - [x] Models e migrations
 - [x] Autenticação JWT (login, refresh com rotação, logout, me)
-- [ ] CRUD Unidades
-- [ ] CRUD Usuários
-- [ ] CRUD Clientes
+- [x] CRUD Unidades
+- [x] CRUD Usuários
+- [x] CRUD Clientes (com tipo_visita_padrao)
 - [ ] CRUD Chamados + round-robin
 - [ ] Execução de visita (iniciar, setores, cargos, fotos, finalizar)
 - [ ] Fluxo de validação pelo cliente (tokens, endpoints públicos)
@@ -44,13 +44,12 @@
 ---
 
 ## 🔄 Em andamento
-_Sessão #2 — Autenticação JWT concluída. Nada em aberto ao encerrar._
+_Sessão #3 — CRUDs de unidades, usuários e clientes concluídos. Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida a partir daqui:
-4. Backend: CRUD unidades, usuários, clientes
 5. Backend: CRUD chamados com round-robin e notificações
 6. Backend: endpoints de execução de visita
 7. Backend: fluxo de validação pelo cliente
@@ -79,6 +78,15 @@ Ordem sugerida a partir daqui:
 - **jti no access token:** sem ele, dois logins/refresh no mesmo segundo geravam tokens idênticos (JWT tem resolução de segundos). Resolvido.
 - **Validado com smoke test** (httpx.AsyncClient em event loop único — TestClient sync quebra o pool async do asyncpg): 15/15 checagens OK (login, /me com/sem token, refresh com novo token, logout, refresh revogado pós-logout, senha errada → `INVALID_CREDENTIALS`). Script foi removido após validar.
 - **Dica de teste:** para testar a app async, usar `httpx.AsyncClient` + `ASGITransport` num só `asyncio.run`, nunca o `TestClient` síncrono (event loop novo por request quebra o pool asyncpg).
+
+**Sessão #3 (2026-07-14) — CRUDs unidades/usuários/clientes:**
+- Infra reutilizável: `schemas/common.py` (`PageParams`, `Page[T]` genérico, helper `paginate()` com COUNT + LIMIT/OFFSET) e `utils/validators.py` (`validar_cnpj` com dígitos verificadores, `formatar_cnpj`).
+- **Unidades** (`/api/unidades`): list (search nome/cnpj, filtro ativo, paginado) / get / post / put. CNPJ validado e único (409). Escrita só ADMIN; leitura qualquer autenticado. UF normalizada p/ maiúscula.
+- **Usuários** (`/api/usuarios`): list (search, filtros role/unidade/ativo) / get / post / put. Senha hasheada no create/update (campo `senha` → `senha_hash`). E-mail único (409). Leitura ADMIN+GESTOR; escrita só ADMIN.
+- **Clientes** (`/api/clientes`): list (search, filtros unidade/tipo_visita/ativo) / get / post / put. `tipo_visita_padrao` incluído. CNPJ opcional mas validado quando presente. FKs `gestor_comercial_id` (precisa ser role GESTOR) e `unidade_medsest_id` validadas → 422. Acesso ADMIN+GESTOR.
+- Padrão dos routers: `_get_or_404`, `require_roles(...)` para autorização, `model_dump(exclude_unset=True)` no PUT, erros `{detail, code}` (ex.: `CNPJ_DUPLICADO`, `EMAIL_DUPLICADO`, `GESTOR_INVALIDO`).
+- **Validado com smoke test** (httpx.AsyncClient): 21/21 checagens OK — validação CNPJ (422), duplicidade (409), autorização por role (403 técnico), paginação, filtros, hash de senha (novo usuário loga), troca de senha. Dados de teste foram limpos do banco após validar (seed permanece: 1 unidade / 7 usuários / 3 clientes). Script removido.
+- **Detalhe:** para gerar CNPJ válido em teste, brute-force dos 2 dígitos verificadores sobre um prefixo de 12 dígitos usando o próprio `validar_cnpj`.
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
 - UUIDs como PK usando `server_default=text("gen_random_uuid()")` (requer extensão `pgcrypto`/`pgcrypto` nativo do PG13+; `gen_random_uuid` é builtin no PG13+).
@@ -91,4 +99,4 @@ Ordem sugerida a partir daqui:
 **Sessão #1 (2026-07-14):**
 Criada toda a fundação do projeto: estrutura de pastas monorepo, arquivos raiz (.gitignore, README, docker-compose), base do backend (config, database, main) com todos os models e a migration inicial, seed.py, e a base do frontend (package.json, vite.config com PWA, tailwind com design tokens da paleta MedSest, tsconfig, types).
 
-**Para a próxima sessão (#3):** implementar os CRUDs de **unidades, usuários e clientes** (com `tipo_visita_padrao` no cliente), reaproveitando `require_roles` para autorização e o formato `{detail, code}` de erro. Ler este PROGRESS.md, os models e `routers/auth.py`/`middleware/auth.py` antes de começar. O banco local (PostgreSQL 17) já está com migration + seed aplicados; para subir a API: `cd backend && venv\Scripts\activate && uvicorn app.main:app --reload` (docs em /docs).
+**Para a próxima sessão (#4):** implementar o **CRUD de Chamados com round-robin e notificações** — criar chamado (tipo_visita obrigatório, atribui técnico interno via round-robin `services/round_robin.py`, dispara notificação ao técnico externo), editar (regras por status/role), cancelar, listar/filtrar (por status, técnico, cliente, tipo_visita) com permissões por role. As notificações (e-mail/WhatsApp) podem começar como stubs que gravam em `notificacoes_log` e ficam prontas para plugar SMTP/Twilio depois. Reaproveitar `schemas/common.py` (paginação) e `require_roles`. Ler os models `chamado.py`, `round_robin.py`, `notificacao.py`. Banco já pronto; subir API: `cd backend && venv\Scripts\activate && uvicorn app.main:app --reload`.
