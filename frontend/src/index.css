@@ -1,0 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-background text-content;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-semibold tracking-tightish;
+  }
+}
+
+@layer components {
+  /* Botão primário */
+  .btn-primary {
+    @apply inline-flex h-10 min-h-touch items-center justify-center gap-2 rounded-lg bg-primary px-4
+      font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-50;
+  }
+
+  /* Botão secundário */
+  .btn-secondary {
+    @apply inline-flex h-10 min-h-touch items-center justify-center gap-2 rounded-lg border border-border
+      bg-white px-4 font-medium text-content-label transition-colors hover:bg-gray-50;
+  }
+
+  /* Card padrão */
+  .card {
+    @apply rounded-xl border border-border bg-surface p-4 shadow-card;
+  }
+
+  /* Input padrão */
+  .input {
+    @apply h-10 min-h-touch w-full rounded-lg border border-border bg-white px-3 text-content
+      outline-none transition focus:ring-2 focus:ring-primary;
+  }
+}

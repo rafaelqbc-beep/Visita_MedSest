@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Variáveis de ambiente — NUNCA versionar
+.env
+.env.local
+.env.production
+backend/.env
+
+# Uploads (fotos dos clientes — não versionar)
+backend/uploads/
+uploads/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Alembic (manter apenas as migrations, não o banco local)
+*.db
+*.sqlite3
+
+# Manter pasta de uploads no repo (conteúdo ignorado)
+!backend/uploads/.gitkeep

@@ -1,0 +1,39 @@
+# --- Web framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+gunicorn==23.0.0
+
+# --- Banco de dados / ORM ---
+sqlalchemy[asyncio]==2.0.36
+alembic==1.14.0
+asyncpg==0.30.0
+psycopg2-binary==2.9.10          # usado pelo Alembic (migrations síncronas)
+
+# --- Validação / configuração ---
+pydantic==2.10.4
+pydantic-settings==2.7.1
+email-validator==2.2.0
+
+# --- Autenticação / segurança ---
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+
+# --- Upload / arquivos ---
+python-multipart==0.0.20
+aiofiles==24.1.0
+Pillow==11.0.0                   # validação/tratamento de imagens
+
+# --- Relatório Word ---
+python-docx==1.1.2
+
+# --- Notificações ---
+fastapi-mail==1.4.2
+twilio==9.4.1
+httpx==0.28.1
+
+# --- Agendamento (lembretes) ---
+apscheduler==3.11.0
+
+# --- Rate limiting (endpoints públicos) ---
+slowapi==0.1.9
