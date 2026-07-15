@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-15
-**Sessão atual:** #7
+**Sessão atual:** #8
 **Status:** Em desenvolvimento
 
 ---
@@ -54,7 +54,7 @@ rastreabilidade que o e-mail dava antes.
 - [x] CRUD Chamados + round-robin
 - [x] Execução de visita (iniciar, setores, cargos, fotos, finalizar)
 - [x] Assinaturas no local (upload canvas cliente/técnico + finalizar visita)
-- [ ] Dashboard (KPIs + tipo de visita)
+- [x] Dashboard (KPIs + tipo de visita)
 - [ ] Exportação Word — **+ PDF do recibo do cliente** (precisa escolher uma lib de PDF)
 - [ ] Notificações (e-mail + WhatsApp) — **estrutura pronta (4 eventos), envio real pendente** (ver sessão #5)
 - [x] Seed script
@@ -79,14 +79,13 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #7 — assinaturas + finalizar visita concluídas. **O backend do fluxo de campo está completo de ponta a ponta.** Nada em aberto ao encerrar._
+_Sessão #8 — dashboard concluído. Nada em aberto ao encerrar. **Falta só a exportação Word para o backend ficar completo.**_
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida a partir daqui:
-8. Backend: dashboard
-9. Backend: exportação Word (embutir as assinaturas no documento)
+9. Backend: exportação Word (embutir as assinaturas no documento) + PDF do recibo
 10+. Frontend (auth → layout → dashboard → chamados → visita → conferência/assinaturas → relatório → cadastros → PWA)
 
 ---
@@ -178,6 +177,19 @@ Ordem sugerida a partir daqui:
 - **⚠️ PENDÊNCIA REGISTRADA — PDF do recibo:** o cliente decidiu (sessão #4) receber o relatório assinado em PDF. **Não há biblioteca de PDF no projeto** — `python-docx` gera `.docx`, não PDF. Será preciso escolher uma (`reportlab` ou `fpdf2`; `weasyprint` exige GTK no Windows e complica o dev local) e adicionar ao `requirements.txt`. Fica para a sessão da exportação. Por ora o `notificar_recibo_cliente` monta o corpo do e-mail sem anexo — e nem envia, pois o SMTP também não está configurado.
 - **Validado com smoke test:** 38/38 checagens OK — percorre o fluxo de campo inteiro (chamado → iniciar → setor → cargo → assinaturas → finalizar → liberação) e cada trava no caminho: finalizar sem setor/cargo/assinaturas, CPF inválido, nome vazio, assinatura que não é imagem, técnico de outro chamado (404), reassinatura apagando o arquivo antigo, **técnico interno recebendo 404 antes de finalizar e 200 depois** (a regra de liberação, provada), e tudo travando após FINALIZADO. Dados de teste e arquivos removidos; banco e `uploads/` de volta ao estado do seed. Scripts removidos.
 
+**Sessão #8 (2026-07-15) — Dashboard:**
+- **REFATORAÇÃO primeiro:** a regra de escopo estava duplicada (`_aplicar_escopo`/`_pode_ver` em `routers/chamados.py` **e** `pode_ver_chamado` em `services/visita.py`) — o dashboard seria o terceiro lugar. Consolidada em **`services/visita.py` como fonte única**: `aplicar_escopo_chamados()` (versão SQL) e `pode_ver_chamado()` (versão Python). `routers/chamados.py` agora importa de lá; `_get_visivel_ou_404` foi substituído por `get_chamado_visivel`, que já fazia o mesmo.
+- **`GET /api/dashboard`** (`?unidade_id=&periodo_inicio=&periodo_fim=&tipo_visita=`), com 7 seções: `kpis`, `por_tipo_visita`, `conversao_novos_clientes`, `chamados_por_status`, `volume_por_mes`, `tempo_medio_por_tecnico`, `carga_tecnicos_internos`.
+- **Todas as agregações em SQL** (`COUNT`/`AVG`/`date_trunc`/`extract('epoch')`) — nada de trazer chamados para somar em Python.
+- **Fuso nos cortes de mês:** os timestamps são UTC, mas os meses são truncados em `America/Sao_Paulo` (`date_trunc('month', timezone('America/Sao_Paulo', col))`). Sem isso uma visita finalizada às 22h do dia 31 (01h UTC do dia 1º) cairia no mês seguinte no relatório.
+- **Semântica do filtro de período (decisão importante, documentada no schema):** `periodo_inicio`/`periodo_fim` recortam as *análises* (tempos médios, distribuição, conversão) sobre `dt_abertura`. Os *indicadores operacionais* — `total_abertos`, `visitas_mes_atual`, `a_vencer_15_dias` — retratam "agora" e **ignoram o período** de propósito: são operacionais, não analíticos. O `volume_por_mes` também ignora (a janela dele é sempre os últimos 6 meses).
+- **`por_tipo_visita` e `conversao_novos_clientes` ignoram o filtro `tipo_visita`** — aplicá-lo os tornaria contraditórios (a pizza viraria uma fatia de 100%; a conversão de Novos Clientes zeraria ao filtrar Renovação). Implementado com `base(..., com_tipo=False)`.
+- Séries sempre completas: todos os tipos e status aparecem mesmo zerados, e os 6 meses vêm preenchidos — o gráfico não pode "perder" uma fatia/barra por falta de dado.
+- `a_vencer_15_dias` usa `COALESCE(data_visita_alterada, data_proposta)` — o reagendamento do técnico é a data que vale.
+- **`visitas_mes_atual` e `volume_por_mes` contam por `dt_fim_visita`** (visitas concluídas). Isso ficou mais preciso com o fluxo novo: como a finalização acontece no local logo após a visita, `dt_fim_visita` ≈ data real da visita. No fluxo antigo (aprovação por e-mail) a finalização atrasava dias e distorceria a métrica.
+- **Validado com smoke test:** 46/46 checagens OK — os números foram **conferidos contra o seed conhecido**, não só quanto ao formato: total_abertos=2, duração média=2.0h, exportação=5.12 dias (5d3h), NOVO_CLIENTE=40%, conversão=50%, carga só do interno A. Também: escopo dos 4 perfis (Ana vê 3, interno A vê só 1 FINALIZADO, gestor vê 5), filtros de tipo/período, e 401 sem token. Script removido; dashboard não cria dados, nada a limpar.
+- **Nota:** uma falha inicial do teste era do próprio teste (esqueci as 3h no cálculo esperado), não do código — a expectativa foi corrigida para 5.12.
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
@@ -193,13 +205,12 @@ Criada toda a fundação do projeto: estrutura de pastas monorepo, arquivos raiz
 
 **Marco atingido na #7:** o **backend do fluxo de campo está completo** — abrir chamado → round-robin → iniciar → registrar setores/cargos/fotos → conferir → assinar (cliente + técnico) → finalizar → liberar ao técnico interno.
 
-**Para a próxima sessão (#8):** implementar o **dashboard** (`GET /api/dashboard?unidade_id=&periodo_inicio=&periodo_fim=&tipo_visita=`) com `schemas/dashboard.py`:
-- **KPIs:** chamados abertos (PENDENTE + EM_ANDAMENTO); visitas realizadas no mês; a vencer nos próximos 15 dias; tempo médio abertura→visita (dias); tempo médio de duração da visita (horas); tempo médio finalização→exportação Word (dias).
-  ⚠️ Os KPIs "aguardando validação" e "aguardando liberação" do prompt original **não existem mais** (ver MUDANÇA DE ESCOPO no topo).
-- **KPIs por tipo de visita:** quantidade e % por Novo Cliente / Renovação / Visita Técnica, com filtro de período; distribuição para o gráfico de pizza; e a tabela de conversão (dos Novos Clientes, quantos tiveram visita concluída no período).
-- **Séries para os gráficos:** chamados por status (donut); volume por mês nos últimos 6 meses empilhado por tipo (bar); tempo médio por técnico externo (bar horizontal).
-- **Distribuição dos técnicos internos:** quantos PGRs cada um tem pendentes de exportação (FINALIZADO sem `dt_exportacao_word`).
-- **Escopo por role igual ao de chamados:** ADMIN tudo · GESTOR só a unidade · TECNICO_EXTERNO só os seus · TECNICO_INTERNO só os atribuídos e FINALIZADOS. Reusar a lógica de `_aplicar_escopo` de `routers/chamados.py` (considerar extrair para um lugar comum).
-- Fazer as agregações em SQL (`func.count`, `func.avg`, `extract`), não em Python.
+**Para a próxima sessão (#9) — a última do backend:** **exportação Word + PDF do recibo**.
+- **`GET /api/chamados/{id}/exportar-word`** (`routers/exportacao.py` + `services/word_export.py`, com `python-docx`): gera o `.docx` com os dados do chamado, setores, cargos e **fotos embutidas**, mais as **duas assinaturas** (imagens de `uploads/assinaturas/`) com nome/CPF do cliente, data/hora e geolocalização. Só o **técnico interno atribuído** (e ADMIN), e só com o chamado `FINALIZADO` → reusar `get_chamado_visivel`, que já garante isso para o perfil TECNICO_INTERNO. Gravar `dt_exportacao_word` **só no primeiro download** (o KPI de tempo médio depende disso). Retornar como `StreamingResponse`/`FileResponse` com `Content-Disposition`.
+- **⚠️ DECISÃO PENDENTE — biblioteca de PDF:** o recibo do cliente (decidido na sessão #4) precisa de PDF, e `python-docx` só gera `.docx`. **Perguntar ao usuário** antes de adicionar: sugestão `fpdf2` (leve, puro Python, sem dependência de sistema) ou `reportlab` (mais poderoso, mais verboso). **Evitar `weasyprint`** — exige GTK no Windows e quebraria o ambiente local dele. Depois de escolher: adicionar ao `requirements.txt`, gerar o PDF do relatório assinado e anexá-lo em `notificar_recibo_cliente` (`services/notificacoes.py`, já tem o TODO no lugar).
+- Depois disso o backend fica completo e começa o frontend (auth → layout → dashboard → chamados → visita → assinaturas → relatório → cadastros → PWA).
+
+**Pendências que dependem do usuário:**
+- **Credenciais de SMTP e Twilio** — ele avisou (15/07) que está trabalhando nisso. Quando chegarem: preencher o `.env` e implementar `_enviar_email`/`_enviar_whatsapp` em `services/notificacoes.py` (os TODOs estão nos lugares certos). Nenhum call site muda; os 4 eventos passam a registrar ENVIADO em vez de FALHOU.
 
 Banco já pronto; subir API: `cd backend && venv\Scripts\activate && uvicorn app.main:app --reload`.

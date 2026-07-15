@@ -32,7 +32,11 @@ from app.services.notificacoes import (
     notificar_visita_liberada,
 )
 from app.services.round_robin import get_proximo_tecnico_interno
-from app.services.visita import get_chamado_editavel
+from app.services.visita import (
+    aplicar_escopo_chamados,
+    get_chamado_editavel,
+    get_chamado_visivel,
+)
 from app.utils.exceptions import AppException
 from app.utils.file_handler import remover_arquivo, salvar_imagem
 from app.utils.validators import formatar_cpf, validar_cpf
@@ -49,44 +53,6 @@ _CAMPOS_LIVRES_APOS_TRAVA = {"tecnico_externo_id", "tecnico_interno_id"}
 
 def _agora() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _aplicar_escopo(stmt: Select, usuario: Usuario) -> Select:
-    """Restringe a consulta ao que cada perfil pode enxergar."""
-    if usuario.role == RoleEnum.ADMIN:
-        return stmt  # administrador enxerga todas as unidades
-    if usuario.role == RoleEnum.GESTOR_COMERCIAL:
-        return stmt.where(Chamado.unidade_medsest_id == usuario.unidade_id)
-    if usuario.role == RoleEnum.TECNICO_EXTERNO:
-        return stmt.where(Chamado.tecnico_externo_id == usuario.id)
-    # Técnico interno só acessa o que já foi assinado e liberado no local.
-    return stmt.where(
-        Chamado.tecnico_interno_id == usuario.id,
-        Chamado.status == StatusChamado.FINALIZADO,
-    )
-
-
-def _pode_ver(chamado: Chamado, usuario: Usuario) -> bool:
-    if usuario.role == RoleEnum.ADMIN:
-        return True
-    if usuario.role == RoleEnum.GESTOR_COMERCIAL:
-        return chamado.unidade_medsest_id == usuario.unidade_id
-    if usuario.role == RoleEnum.TECNICO_EXTERNO:
-        return chamado.tecnico_externo_id == usuario.id
-    return (
-        chamado.tecnico_interno_id == usuario.id
-        and chamado.status == StatusChamado.FINALIZADO
-    )
-
-
-async def _get_visivel_ou_404(
-    chamado_id: uuid.UUID, usuario: Usuario, db: AsyncSession
-) -> Chamado:
-    chamado = await db.get(Chamado, chamado_id)
-    if chamado is None or not _pode_ver(chamado, usuario):
-        # 404 em vez de 403: não revela a existência de chamados de outros.
-        raise AppException(status.HTTP_404_NOT_FOUND, "Chamado não encontrado.", "CHAMADO_NOT_FOUND")
-    return chamado
 
 
 async def _validar_tecnico(
@@ -136,7 +102,7 @@ async def listar_chamados(
         )
         .order_by(Chamado.numero_chamado.desc())
     )
-    stmt = _aplicar_escopo(stmt, usuario)
+    stmt = aplicar_escopo_chamados(stmt, usuario)
 
     if status_ is not None:
         stmt = stmt.where(Chamado.status == status_)
@@ -174,7 +140,7 @@ async def obter_chamado(
     db: AsyncSession = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
 ) -> ChamadoListItem:
-    chamado = await _get_visivel_ou_404(chamado_id, usuario, db)
+    chamado = await get_chamado_visivel(chamado_id, usuario, db)
     stmt = (
         select(Chamado)
         .where(Chamado.id == chamado.id)
@@ -258,7 +224,7 @@ async def atualizar_chamado(
     db: AsyncSession = Depends(get_db),
     usuario: Usuario = Depends(_GESTAO),
 ) -> ChamadoRead:
-    chamado = await _get_visivel_ou_404(chamado_id, usuario, db)
+    chamado = await get_chamado_visivel(chamado_id, usuario, db)
     dados = body.model_dump(exclude_unset=True)
 
     if chamado.status in _STATUS_TRAVADOS:
@@ -289,7 +255,7 @@ async def cancelar_chamado(
     db: AsyncSession = Depends(get_db),
     usuario: Usuario = Depends(_GESTAO),
 ) -> ChamadoRead:
-    chamado = await _get_visivel_ou_404(chamado_id, usuario, db)
+    chamado = await get_chamado_visivel(chamado_id, usuario, db)
     if chamado.status == StatusChamado.CANCELADO:
         raise AppException(status.HTTP_409_CONFLICT, "Chamado já está cancelado.", "JA_CANCELADO")
 
@@ -307,7 +273,7 @@ async def iniciar_visita(
     usuario: Usuario = Depends(require_roles(RoleEnum.TECNICO_EXTERNO)),
 ) -> ChamadoRead:
     """Técnico externo inicia a visita no local: grava horário e geolocalização."""
-    chamado = await _get_visivel_ou_404(chamado_id, usuario, db)
+    chamado = await get_chamado_visivel(chamado_id, usuario, db)
     if chamado.status != StatusChamado.PENDENTE:
         raise AppException(
             status.HTTP_409_CONFLICT,
@@ -474,7 +440,7 @@ async def reagendar_chamado(
     usuario: Usuario = Depends(require_roles(RoleEnum.TECNICO_EXTERNO)),
 ) -> ChamadoRead:
     """O técnico externo propõe nova data e o gestor comercial é avisado."""
-    chamado = await _get_visivel_ou_404(chamado_id, usuario, db)
+    chamado = await get_chamado_visivel(chamado_id, usuario, db)
     if chamado.status != StatusChamado.PENDENTE:
         raise AppException(
             status.HTTP_409_CONFLICT,

@@ -11,6 +11,7 @@ from app.routers import (
     cargos,
     chamados,
     clientes,
+    dashboard,
     fotos,
     setores,
     unidades,
@@ -68,4 +69,5 @@ app.include_router(chamados.router)
 app.include_router(setores.router)
 app.include_router(cargos.router)
 app.include_router(fotos.router)
-# Próximas sessões: assinaturas + finalizar visita, dashboard, exportacao.
+app.include_router(dashboard.router)
+# Próxima sessão: exportacao Word + PDF do recibo.

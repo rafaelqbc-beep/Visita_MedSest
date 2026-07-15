@@ -1,7 +1,13 @@
-"""Regras de acesso aos dados coletados durante a visita (setores/cargos/fotos)."""
+"""Regras de acesso aos chamados e aos dados coletados durante a visita.
+
+Este módulo é a fonte única da regra de escopo — routers de chamados, de
+setores/cargos/fotos e o dashboard consomem daqui, para a regra não divergir
+entre eles.
+"""
 import uuid
 
 from fastapi import status
+from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chamado import Chamado
@@ -14,9 +20,26 @@ _NAO_ENCONTRADO = AppException(
 )
 
 
+def aplicar_escopo_chamados(stmt: Select, usuario: Usuario) -> Select:
+    """Restringe uma consulta sobre `chamados` ao que o perfil pode enxergar.
+
+    Versão em SQL da mesma regra de `pode_ver_chamado`.
+    """
+    if usuario.role == RoleEnum.ADMIN:
+        return stmt  # administrador enxerga todas as unidades
+    if usuario.role == RoleEnum.GESTOR_COMERCIAL:
+        return stmt.where(Chamado.unidade_medsest_id == usuario.unidade_id)
+    if usuario.role == RoleEnum.TECNICO_EXTERNO:
+        return stmt.where(Chamado.tecnico_externo_id == usuario.id)
+    # Técnico interno só acessa o que já foi assinado e liberado no local.
+    return stmt.where(
+        Chamado.tecnico_interno_id == usuario.id,
+        Chamado.status == StatusChamado.FINALIZADO,
+    )
+
+
 def pode_ver_chamado(chamado: Chamado, usuario: Usuario) -> bool:
-    """Mesma regra de `routers/chamados.py`: o técnico interno só enxerga o
-    que já foi assinado e liberado no local."""
+    """Versão em Python da mesma regra de `aplicar_escopo_chamados`."""
     if usuario.role == RoleEnum.ADMIN:
         return True
     if usuario.role == RoleEnum.GESTOR_COMERCIAL:
