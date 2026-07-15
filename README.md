@@ -6,6 +6,32 @@ O sistema coleta setores, cargos/funções e registros fotográficos das empresa
 
 ---
 
+## Fluxo da visita
+
+```
+PENDENTE  ──▶  EM_ANDAMENTO  ──▶  FINALIZADO
+   │               │                  │
+   │               │                  └─ liberado ao técnico interno,
+   │               │                     que visualiza e exporta o Word
+   │               └─ técnico registra setores, cargos e fotos;
+   │                  ao terminar, confere os dados JUNTO AO CLIENTE
+   │                  no local e edita o que for preciso;
+   │                  cliente assina (nome + CPF) e técnico assina
+   └─ chamado aberto pelo gestor comercial, técnico interno
+      atribuído por round-robin
+
+CANCELADO ── qualquer status pode ser cancelado por ADMIN
+```
+
+A conferência e a **assinatura acontecem presencialmente, no fim da visita** — não há
+fluxo de aprovação por e-mail. Após finalizar, o cliente recebe apenas uma cópia em
+PDF do relatório assinado (recibo, sem exigir ação).
+
+> **Nota:** o `PROGRESS.md` documenta essa mudança de escopo em relação à
+> especificação original do projeto.
+
+---
+
 ## Stack
 
 | Camada | Tecnologias |

@@ -9,6 +9,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     ForeignKey,
     Integer,
+    String,
     Text,
     text,
 )
@@ -70,16 +71,22 @@ class Chamado(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     geoloc_latitude: Mapped[float | None] = mapped_column(DECIMAL(10, 8))
     geoloc_longitude: Mapped[float | None] = mapped_column(DECIMAL(11, 8))
 
-    # Timestamps do fluxo de validação pelo cliente
-    dt_email_validacao_enviado: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    dt_cliente_aprovou: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    dt_cliente_comentou: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # --- Conferência e assinaturas no local (substitui a validação por e-mail) ---
+    # Cliente: assina no tablet (dedo/caneta) e se identifica com nome e CPF.
+    assinatura_cliente_caminho: Mapped[str | None] = mapped_column(String(500))
+    assinatura_cliente_nome: Mapped[str | None] = mapped_column(String(200))
+    assinatura_cliente_cpf: Mapped[str | None] = mapped_column(String(14))
+    dt_assinatura_cliente: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Técnico externo: identidade vem do usuário logado, basta o traço + timestamp.
+    assinatura_tecnico_caminho: Mapped[str | None] = mapped_column(String(500))
+    dt_assinatura_tecnico: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Geolocalização no momento da assinatura (evidência de que foi feita no local)
+    geoloc_assinatura_latitude: Mapped[float | None] = mapped_column(DECIMAL(10, 8))
+    geoloc_assinatura_longitude: Mapped[float | None] = mapped_column(DECIMAL(11, 8))
 
     # Timestamps do técnico interno
     dt_liberado_tecnico_interno: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     dt_exportacao_word: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    rodadas_validacao: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     # Relacionamentos
     cliente: Mapped["Cliente"] = relationship("Cliente")  # noqa: F821
@@ -90,7 +97,4 @@ class Chamado(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     setores: Mapped[list["Setor"]] = relationship(  # noqa: F821
         back_populates="chamado", cascade="all, delete-orphan", order_by="Setor.ordem"
-    )
-    validacoes: Mapped[list["ValidacaoCliente"]] = relationship(  # noqa: F821
-        back_populates="chamado", cascade="all, delete-orphan", order_by="ValidacaoCliente.rodada"
     )

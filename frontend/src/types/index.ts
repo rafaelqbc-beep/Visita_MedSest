@@ -4,15 +4,11 @@ export type Role = 'ADMIN' | 'GESTOR_COMERCIAL' | 'TECNICO_EXTERNO' | 'TECNICO_I
 
 export type TipoVisita = 'NOVO_CLIENTE' | 'RENOVACAO' | 'VISITA_TECNICA'
 
-export type StatusChamado =
-  | 'PENDENTE'
-  | 'EM_ANDAMENTO'
-  | 'AGUARDANDO_VALIDACAO'
-  | 'AGUARDANDO_LIBERACAO'
-  | 'FINALIZADO'
-  | 'CANCELADO'
-
-export type StatusRespostaValidacao = 'APROVADO' | 'COMENTADO'
+/**
+ * Fluxo: a conferência e as assinaturas acontecem no local, ao fim da visita.
+ * PENDENTE -> EM_ANDAMENTO -> FINALIZADO (assinado por cliente + técnico)
+ */
+export type StatusChamado = 'PENDENTE' | 'EM_ANDAMENTO' | 'FINALIZADO' | 'CANCELADO'
 
 export interface UnidadeMedsest {
   id: string
@@ -84,16 +80,6 @@ export interface Setor {
   fotos?: FotoSetor[]
 }
 
-export interface ValidacaoCliente {
-  id: string
-  chamado_id: string
-  rodada: number
-  status_resposta?: StatusRespostaValidacao | null
-  comentarios?: string | null
-  dt_resposta?: string | null
-  created_at: string
-}
-
 export interface Chamado {
   id: string
   numero_chamado: number
@@ -112,15 +98,19 @@ export interface Chamado {
   dt_fim_visita?: string | null
   geoloc_latitude?: number | null
   geoloc_longitude?: number | null
-  dt_email_validacao_enviado?: string | null
-  dt_cliente_aprovou?: string | null
-  dt_cliente_comentou?: string | null
+  /** Assinaturas coletadas no local ao encerrar a visita. */
+  assinatura_cliente_caminho?: string | null
+  assinatura_cliente_nome?: string | null
+  assinatura_cliente_cpf?: string | null
+  dt_assinatura_cliente?: string | null
+  assinatura_tecnico_caminho?: string | null
+  dt_assinatura_tecnico?: string | null
+  geoloc_assinatura_latitude?: number | null
+  geoloc_assinatura_longitude?: number | null
   dt_liberado_tecnico_interno?: string | null
   dt_exportacao_word?: string | null
-  rodadas_validacao: number
   cliente?: Cliente
   setores?: Setor[]
-  validacoes?: ValidacaoCliente[]
 }
 
 export interface AuthTokens {

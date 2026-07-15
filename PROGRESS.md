@@ -1,9 +1,44 @@
 # MedSest Visita — Progresso do Desenvolvimento
 
 ## Status Geral
-**Última atualização:** 2026-07-14
-**Sessão atual:** #3
+**Última atualização:** 2026-07-15
+**Sessão atual:** #4
 **Status:** Em desenvolvimento
+
+---
+
+## ⚠️ MUDANÇA DE ESCOPO — leia antes de usar o prompt original
+
+**O prompt original descreve um fluxo de validação do cliente por e-mail
+(token, páginas públicas, botões "Concordo"/"Fazer comentários", rodadas de
+revisão). ESSE FLUXO FOI SUBSTITUÍDO em 15/07/2026, a pedido do cliente.**
+
+**Fluxo atual — conferência e assinatura no local:**
+1. O técnico externo executa a visita (setores, cargos, fotos).
+2. Ao terminar, **confere os dados junto ao cliente ali mesmo** e edita o que for necessário.
+3. O **cliente assina no tablet** (dedo/caneta) e informa **nome e CPF**.
+4. O **técnico externo assina** também.
+5. Clica em **Finalizar Visita** → status vira `FINALIZADO` e os dados ficam liberados para o **técnico interno** elaborar o PGR.
+6. O cliente recebe, por e-mail, apenas uma **cópia em PDF do relatório assinado** (recibo, sem pedir nenhuma ação).
+
+**O que deixou de existir (NÃO implementar):**
+- Status `AGUARDANDO_VALIDACAO` e `AGUARDANDO_LIBERACAO`
+- Tabela `validacoes_cliente`, tokens `secrets.token_urlsafe(64)`, rodadas de validação
+- Endpoints públicos `/api/public/validacao/*` e o rate limiting deles
+- Páginas públicas `/validacao/{token}/aprovar` e `/comentar` (`ValidacaoPage`, `AprovarPage`, `ComentarPage`)
+- `validacao_service.py`, `routers/validacao_publica.py`
+- Notificações: `notificar_validacao_cliente`, `notificar_comentarios_recebidos`, `notificar_reenvio_validacao`
+- Endpoint `PUT /api/chamados/{id}/reenviar-validacao`
+- Componente `ComentariosCliente.tsx` e o card âmbar de "cliente solicitou revisão"
+- KPIs do dashboard "aguardando validação" e "aguardando liberação"
+
+**Por que a impressão digital não foi implementada:** navegador não acessa
+leitor biométrico — WebAuthn faz autenticação por biometria mas nunca entrega
+a imagem da digital, e exigiria cadastro prévio. Capturar digital de verdade
+exigiria leitor USB/Bluetooth + app nativo, o que quebraria a proposta de PWA.
+A assinatura desenhada no canvas com o dedo cobre o caso de uso (quem não sabe
+assinar faz uma marca), e nome + CPF + timestamp + geolocalização dão a
+rastreabilidade que o e-mail dava antes.
 
 ---
 
@@ -18,7 +53,7 @@
 - [x] CRUD Clientes (com tipo_visita_padrao)
 - [ ] CRUD Chamados + round-robin
 - [ ] Execução de visita (iniciar, setores, cargos, fotos, finalizar)
-- [ ] Fluxo de validação pelo cliente (tokens, endpoints públicos)
+- [ ] Assinaturas no local (upload canvas cliente/técnico + finalizar visita)
 - [ ] Dashboard (KPIs + tipo de visita)
 - [ ] Exportação Word
 - [ ] Notificações (e-mail + WhatsApp)
@@ -31,7 +66,7 @@
 - [ ] Dashboard
 - [ ] Gestão de chamados (gestor)
 - [ ] Módulo de visita tablet + offline/IndexedDB
-- [ ] Páginas públicas de validação (cliente)
+- [ ] Tela de conferência + assinaturas no canvas (cliente e técnico)
 - [ ] Módulo de relatório (técnico interno)
 - [ ] Cadastros admin
 - [ ] PWA (service worker, manifest) — configurado no vite.config, faltam ícones/telas
@@ -44,18 +79,18 @@
 ---
 
 ## 🔄 Em andamento
-_Sessão #3 — CRUDs de unidades, usuários e clientes concluídos. Nada em aberto ao encerrar._
+_Sessão #4 — mudança de escopo (assinatura no local) aplicada no banco/models. Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida a partir daqui:
 5. Backend: CRUD chamados com round-robin e notificações
-6. Backend: endpoints de execução de visita
-7. Backend: fluxo de validação pelo cliente
+6. Backend: endpoints de execução de visita (iniciar, setores, cargos, fotos)
+7. Backend: assinaturas + finalizar visita (upload das 2 assinaturas, PDF recibo ao cliente)
 8. Backend: dashboard
-9. Backend: exportação Word
-10+. Frontend (design system → auth → layout → dashboard → chamados → visita → validação → relatório → cadastros → PWA)
+9. Backend: exportação Word (embutir as assinaturas no documento)
+10+. Frontend (auth → layout → dashboard → chamados → visita → conferência/assinaturas → relatório → cadastros → PWA)
 
 ---
 
@@ -87,6 +122,19 @@ Ordem sugerida a partir daqui:
 - Padrão dos routers: `_get_or_404`, `require_roles(...)` para autorização, `model_dump(exclude_unset=True)` no PUT, erros `{detail, code}` (ex.: `CNPJ_DUPLICADO`, `EMAIL_DUPLICADO`, `GESTOR_INVALIDO`).
 - **Validado com smoke test** (httpx.AsyncClient): 21/21 checagens OK — validação CNPJ (422), duplicidade (409), autorização por role (403 técnico), paginação, filtros, hash de senha (novo usuário loga), troca de senha. Dados de teste foram limpos do banco após validar (seed permanece: 1 unidade / 7 usuários / 3 clientes). Script removido.
 - **Detalhe:** para gerar CNPJ válido em teste, brute-force dos 2 dígitos verificadores sobre um prefixo de 12 dígitos usando o próprio `validar_cnpj`.
+
+**Sessão #4 (2026-07-15) — Mudança de escopo: assinatura no local:**
+- Ver o bloco **⚠️ MUDANÇA DE ESCOPO** no topo deste arquivo. Momento oportuno: o fluxo de e-mail estava previsto para a sessão #7 e não tinha sido implementado — só existiam a tabela, o enum e colunas.
+- **Migration `0002_assinatura_no_local`** (reversível, testada com round-trip `downgrade base` → `upgrade head`):
+  - `validacoes_cliente` removida (+ índices)
+  - `chamados`: removidas `dt_email_validacao_enviado`, `dt_cliente_aprovou`, `dt_cliente_comentou`, `rodadas_validacao`
+  - `chamados`: adicionadas `assinatura_cliente_caminho/nome/cpf`, `dt_assinatura_cliente`, `assinatura_tecnico_caminho`, `dt_assinatura_tecnico`, `geoloc_assinatura_latitude/longitude`
+  - enum `status_chamado` recriado com 4 valores. **PostgreSQL não remove valores de ENUM** — foi preciso `RENAME TO ..._old` → `CREATE TYPE` novo → `ALTER COLUMN ... USING CASE` → `DROP TYPE old`. Chamados em validação foram mapeados para `EM_ANDAMENTO` (ainda não assinados).
+- **Assinaturas gravadas como arquivo** em `uploads/assinaturas/`, com o caminho no banco — mesmo padrão de `fotos_setor`. Mantém o DB leve e facilita embutir no Word depois. O seed gera PNGs placeholder reais para os caminhos não apontarem para o vazio.
+- `validar_cpf` + `formatar_cpf` adicionados em `utils/validators.py` (o CPF do cliente virou dado de prova).
+- **BUG corrigido:** os CNPJs do seed eram inválidos pelo dígito verificador (o seed insere via model, sem passar pelo schema Pydantic). Se alguém abrisse um cliente semeado e salvasse pela API, tomaria 422. Trocados por CNPJs válidos (mesmos prefixos, DV corrigido): unidade `12.345.678/0001-95`, clientes `11.111.111/0001-91`, `22.222.222/0001-91`, `33.333.333/0001-91`.
+- Seed reestruturado para cobrir os 4 status: PENDENTE / EM_ANDAMENTO (parcial) / FINALIZADO assinado / FINALIZADO exportado / CANCELADO.
+- Validado: migration nos 2 sentidos, seed limpo, API sobe e faz login (200), frontend compila.
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
 - UUIDs como PK usando `server_default=text("gen_random_uuid()")` (requer extensão `pgcrypto`/`pgcrypto` nativo do PG13+; `gen_random_uuid` é builtin no PG13+).
@@ -99,4 +147,4 @@ Ordem sugerida a partir daqui:
 **Sessão #1 (2026-07-14):**
 Criada toda a fundação do projeto: estrutura de pastas monorepo, arquivos raiz (.gitignore, README, docker-compose), base do backend (config, database, main) com todos os models e a migration inicial, seed.py, e a base do frontend (package.json, vite.config com PWA, tailwind com design tokens da paleta MedSest, tsconfig, types).
 
-**Para a próxima sessão (#4):** implementar o **CRUD de Chamados com round-robin e notificações** — criar chamado (tipo_visita obrigatório, atribui técnico interno via round-robin `services/round_robin.py`, dispara notificação ao técnico externo), editar (regras por status/role), cancelar, listar/filtrar (por status, técnico, cliente, tipo_visita) com permissões por role. As notificações (e-mail/WhatsApp) podem começar como stubs que gravam em `notificacoes_log` e ficam prontas para plugar SMTP/Twilio depois. Reaproveitar `schemas/common.py` (paginação) e `require_roles`. Ler os models `chamado.py`, `round_robin.py`, `notificacao.py`. Banco já pronto; subir API: `cd backend && venv\Scripts\activate && uvicorn app.main:app --reload`.
+**Para a próxima sessão (#5):** implementar o **CRUD de Chamados com round-robin e notificações** — criar chamado (tipo_visita obrigatório, atribui técnico interno via round-robin `services/round_robin.py`, dispara notificação ao técnico externo), editar (regras por status/role), cancelar, listar/filtrar (por status, técnico, cliente, tipo_visita) com permissões por role. As notificações (e-mail/WhatsApp) podem começar como stubs que gravam em `notificacoes_log` e ficam prontas para plugar SMTP/Twilio depois. Reaproveitar `schemas/common.py` (paginação) e `require_roles`. Ler os models `chamado.py`, `round_robin.py`, `notificacao.py`. Banco já pronto; subir API: `cd backend && venv\Scripts\activate && uvicorn app.main:app --reload`.

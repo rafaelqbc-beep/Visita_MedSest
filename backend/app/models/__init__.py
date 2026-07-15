@@ -8,7 +8,6 @@ from app.models.enums import (
     RoleEnum,
     StatusChamado,
     StatusNotif,
-    StatusRespostaValidacao,
     TipoVisitaEnum,
 )
 from app.models.foto import FotoSetor
@@ -18,7 +17,6 @@ from app.models.round_robin import RoundRobinTecnico
 from app.models.setor import Setor
 from app.models.unidade import UnidadeMedsest
 from app.models.usuario import Usuario
-from app.models.validacao_cliente import ValidacaoCliente
 
 __all__ = [
     "Cargo",
@@ -31,11 +29,9 @@ __all__ = [
     "Setor",
     "UnidadeMedsest",
     "Usuario",
-    "ValidacaoCliente",
     "CanalNotif",
     "RoleEnum",
     "StatusChamado",
     "StatusNotif",
-    "StatusRespostaValidacao",
     "TipoVisitaEnum",
 ]

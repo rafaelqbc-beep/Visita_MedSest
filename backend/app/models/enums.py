@@ -16,11 +16,15 @@ class TipoVisitaEnum(str, enum.Enum):
 
 
 class StatusChamado(str, enum.Enum):
-    PENDENTE = "PENDENTE"                          # aguardando técnico externo
-    EM_ANDAMENTO = "EM_ANDAMENTO"                  # visita em execução
-    AGUARDANDO_VALIDACAO = "AGUARDANDO_VALIDACAO"  # e-mail enviado ao cliente
-    AGUARDANDO_LIBERACAO = "AGUARDANDO_LIBERACAO"  # cliente comentou, ajustes em curso
-    FINALIZADO = "FINALIZADO"                      # cliente aprovou
+    """Fluxo: a conferência e as assinaturas acontecem no local, ao fim da visita.
+
+    PENDENTE -> EM_ANDAMENTO -> FINALIZADO (assinado por cliente + técnico)
+    Qualquer estado pode ir para CANCELADO (ADMIN).
+    """
+
+    PENDENTE = "PENDENTE"          # aguardando técnico externo iniciar
+    EM_ANDAMENTO = "EM_ANDAMENTO"  # visita em execução / conferência com o cliente
+    FINALIZADO = "FINALIZADO"      # assinado no local; liberado ao técnico interno
     CANCELADO = "CANCELADO"
 
 
@@ -32,8 +36,3 @@ class CanalNotif(str, enum.Enum):
 class StatusNotif(str, enum.Enum):
     ENVIADO = "ENVIADO"
     FALHOU = "FALHOU"
-
-
-class StatusRespostaValidacao(str, enum.Enum):
-    APROVADO = "APROVADO"
-    COMENTADO = "COMENTADO"
