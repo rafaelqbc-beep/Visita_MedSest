@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-15
-**Sessão atual:** #4
+**Sessão atual:** #5
 **Status:** Em desenvolvimento
 
 ---
@@ -51,12 +51,12 @@ rastreabilidade que o e-mail dava antes.
 - [x] CRUD Unidades
 - [x] CRUD Usuários
 - [x] CRUD Clientes (com tipo_visita_padrao)
-- [ ] CRUD Chamados + round-robin
+- [x] CRUD Chamados + round-robin
 - [ ] Execução de visita (iniciar, setores, cargos, fotos, finalizar)
 - [ ] Assinaturas no local (upload canvas cliente/técnico + finalizar visita)
 - [ ] Dashboard (KPIs + tipo de visita)
 - [ ] Exportação Word
-- [ ] Notificações (e-mail + WhatsApp)
+- [ ] Notificações (e-mail + WhatsApp) — **estrutura pronta, envio real pendente** (ver sessão #5)
 - [x] Seed script
 
 ### Frontend
@@ -79,13 +79,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #4 — mudança de escopo (assinatura no local) aplicada no banco/models. Nada em aberto ao encerrar._
+_Sessão #5 — CRUD de chamados + round-robin + notificações concluído. Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida a partir daqui:
-5. Backend: CRUD chamados com round-robin e notificações
 6. Backend: endpoints de execução de visita (iniciar, setores, cargos, fotos)
 7. Backend: assinaturas + finalizar visita (upload das 2 assinaturas, PDF recibo ao cliente)
 8. Backend: dashboard
@@ -135,6 +134,26 @@ Ordem sugerida a partir daqui:
 - **BUG corrigido:** os CNPJs do seed eram inválidos pelo dígito verificador (o seed insere via model, sem passar pelo schema Pydantic). Se alguém abrisse um cliente semeado e salvasse pela API, tomaria 422. Trocados por CNPJs válidos (mesmos prefixos, DV corrigido): unidade `12.345.678/0001-95`, clientes `11.111.111/0001-91`, `22.222.222/0001-91`, `33.333.333/0001-91`.
 - Seed reestruturado para cobrir os 4 status: PENDENTE / EM_ANDAMENTO (parcial) / FINALIZADO assinado / FINALIZADO exportado / CANCELADO.
 - Validado: migration nos 2 sentidos, seed limpo, API sobe e faz login (200), frontend compila.
+
+**Sessão #5 (2026-07-15) — CRUD de Chamados + round-robin + notificações:**
+- **Decisões tomadas com o usuário** (o prompt era ambíguo nos dois pontos):
+  - **Cancelar:** ADMIN **+ GESTOR_COMERCIAL** (não só ADMIN). O gestor abriu o chamado; exigir um admin para cada cancelamento travaria a operação.
+  - **Escopo do ADMIN:** vê **todas as unidades** (com `?unidade_id` opcional). O gestor comercial fica restrito à unidade dele.
+- **`services/round_robin.py`** — `get_proximo_tecnico_interno(unidade_id, db)`. Técnicos internos ativos da unidade ordenados por `(created_at, id)` — ordem estável, para a sequência não mudar conforme os registros são atualizados. A linha de controle é lida com **`SELECT ... FOR UPDATE`**: sem o lock, dois chamados criados simultaneamente leriam o mesmo `ultimo_tecnico_interno_id` e cairiam no mesmo técnico, furando o rodízio. Se o último técnico saiu/foi desativado, a sequência recomeça do primeiro. Retorna `None` se a unidade não tem técnico interno ativo.
+- **`services/notificacoes.py`** — `notificar_novo_chamado` (e-mail + WhatsApp ao técnico externo) e `notificar_reagendamento` (e-mail ao gestor). **⚠️ O envio real NÃO está implementado** (falta configurar SMTP/fastapi-mail e Twilio). Cada tentativa é registrada em `notificacoes_log` com status **`FALHOU`** e o motivo em `detalhes`. **Isso é proposital:** marcar `ENVIADO` para uma mensagem que nunca saiu tornaria o log de auditoria mentiroso. Quando as credenciais forem configuradas e o envio implementado (`_enviar_email` / `_enviar_whatsapp` têm os TODOs), as mesmas chamadas passam a registrar `ENVIADO` sem mudar os call sites.
+- **`routers/chamados.py`** — endpoints:
+  - `GET /api/chamados` — paginado, filtros: status, tipo_visita, cliente_id, tecnico_externo_id, tecnico_interno_id, unidade_id (só ADMIN), periodo_inicio/fim (sobre `dt_abertura`), search (nº do chamado ou razão social). Ordenado por `numero_chamado` desc.
+  - `GET /api/chamados/{id}`, `POST`, `PUT`, `PUT /{id}/cancelar`, `PUT /{id}/reagendar`
+- **Escopo por perfil** (`_aplicar_escopo` + `_pode_ver`): ADMIN tudo · GESTOR só a unidade dele · TÉCNICO EXTERNO só onde é o responsável · **TÉCNICO INTERNO só os atribuídos a ele E com status `FINALIZADO`** — é isso que implementa a regra "os dados só são liberados depois de assinados no local".
+- Chamado inacessível retorna **404, não 403** — não revela a existência de chamados de outros.
+- **Chamado travado:** com status `FINALIZADO`/`CANCELADO` o PUT só aceita trocar `tecnico_externo_id`/`tecnico_interno_id` (regra "gestor pode remanejar técnicos a qualquer momento"); qualquer outro campo → 409 `CHAMADO_TRAVADO`.
+- `POST`: `tipo_visita` obrigatório; unidade herdada do cliente (fallback: unidade do usuário); gestor = usuário logado se for GESTOR, senão `gestor_comercial_id` do body ou do cliente; técnico interno via round-robin; `dt_abertura` = now; status PENDENTE; dispara `notificar_novo_chamado`.
+- `reagendar`: só **TÉCNICO_EXTERNO** e só em chamado `PENDENTE` (grava `data_visita_alterada` e avisa o gestor). O gestor muda a data pelo PUT normal — quem reagenda notifica o gestor, então não faria sentido o próprio gestor usar esse endpoint.
+- `ChamadoListItem` traz `cliente_razao_social`, `cliente_cidade` e os nomes dos técnicos via `selectinload`, para o frontend não precisar buscar cada relação.
+- **Não implementado de propósito:** motivo do cancelamento (não existe coluna; exigiria migration — avaliar se a operação sentir falta).
+- **Validado com smoke test:** 35/35 checagens OK — destaque para a **sequência circular do round-robin B → C → A → B** (o seed deixa o último em A), escopo de cada um dos 4 perfis, notificações registradas nos 2 canais, filtros, reagendamento e as travas de cancelamento. Dados de teste removidos e o round-robin restaurado para o estado do seed (último = A). Script removido.
+
+**Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
 - UUIDs como PK usando `server_default=text("gen_random_uuid()")` (requer extensão `pgcrypto`/`pgcrypto` nativo do PG13+; `gen_random_uuid` é builtin no PG13+).
@@ -147,4 +166,6 @@ Ordem sugerida a partir daqui:
 **Sessão #1 (2026-07-14):**
 Criada toda a fundação do projeto: estrutura de pastas monorepo, arquivos raiz (.gitignore, README, docker-compose), base do backend (config, database, main) com todos os models e a migration inicial, seed.py, e a base do frontend (package.json, vite.config com PWA, tailwind com design tokens da paleta MedSest, tsconfig, types).
 
-**Para a próxima sessão (#5):** implementar o **CRUD de Chamados com round-robin e notificações** — criar chamado (tipo_visita obrigatório, atribui técnico interno via round-robin `services/round_robin.py`, dispara notificação ao técnico externo), editar (regras por status/role), cancelar, listar/filtrar (por status, técnico, cliente, tipo_visita) com permissões por role. As notificações (e-mail/WhatsApp) podem começar como stubs que gravam em `notificacoes_log` e ficam prontas para plugar SMTP/Twilio depois. Reaproveitar `schemas/common.py` (paginação) e `require_roles`. Ler os models `chamado.py`, `round_robin.py`, `notificacao.py`. Banco já pronto; subir API: `cd backend && venv\Scripts\activate && uvicorn app.main:app --reload`.
+**Para a próxima sessão (#6):** implementar os **endpoints de execução da visita** — `PUT /api/chamados/{id}/iniciar` (captura geolocalização, grava `dt_inicio_visita`, status → `EM_ANDAMENTO`, só o técnico externo do chamado) e o CRUD de **setores** (`/api/setores`), **cargos** (`/api/cargos`) e **upload de fotos** (`/api/fotos`, validar MIME e tamanho máx. 10MB, salvar em `uploads/` com caminho no banco). Regra central: só o técnico externo responsável edita, e só enquanto o chamado está `EM_ANDAMENTO`. Reaproveitar `require_roles`, `_get_visivel_ou_404`/escopo de `routers/chamados.py`, `schemas/common.py` e `utils/file_handler.py` (ainda não existe — criar). Ler `models/setor.py`, `cargo.py`, `foto.py` e `routers/chamados.py`. A sessão #7 vem depois com as assinaturas + finalizar visita.
+
+Banco já pronto; subir API: `cd backend && venv\Scripts\activate && uvicorn app.main:app --reload`.
