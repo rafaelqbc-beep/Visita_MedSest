@@ -6,7 +6,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import auth, chamados, clientes, unidades, usuarios
+from app.routers import (
+    auth,
+    cargos,
+    chamados,
+    clientes,
+    fotos,
+    setores,
+    unidades,
+    usuarios,
+)
 from app.utils.exceptions import register_exception_handlers
 import os
 
@@ -56,4 +65,7 @@ app.include_router(unidades.router)
 app.include_router(usuarios.router)
 app.include_router(clientes.router)
 app.include_router(chamados.router)
-# Próximas sessões: setores, cargos, fotos, assinaturas, dashboard, exportacao.
+app.include_router(setores.router)
+app.include_router(cargos.router)
+app.include_router(fotos.router)
+# Próximas sessões: assinaturas + finalizar visita, dashboard, exportacao.

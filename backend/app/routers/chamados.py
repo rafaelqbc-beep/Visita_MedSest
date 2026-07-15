@@ -18,6 +18,7 @@ from app.schemas.chamado import (
     ChamadoListItem,
     ChamadoRead,
     ChamadoUpdate,
+    IniciarVisitaRequest,
     ReagendarRequest,
 )
 from app.schemas.common import Page, PageParams, paginate
@@ -282,6 +283,34 @@ async def cancelar_chamado(
         raise AppException(status.HTTP_409_CONFLICT, "Chamado já está cancelado.", "JA_CANCELADO")
 
     chamado.status = StatusChamado.CANCELADO
+    await db.flush()
+    await db.refresh(chamado)
+    return ChamadoRead.model_validate(chamado)
+
+
+@router.put("/{chamado_id}/iniciar", response_model=ChamadoRead)
+async def iniciar_visita(
+    chamado_id: uuid.UUID,
+    body: IniciarVisitaRequest,
+    db: AsyncSession = Depends(get_db),
+    usuario: Usuario = Depends(require_roles(RoleEnum.TECNICO_EXTERNO)),
+) -> ChamadoRead:
+    """Técnico externo inicia a visita no local: grava horário e geolocalização."""
+    chamado = await _get_visivel_ou_404(chamado_id, usuario, db)
+    if chamado.status != StatusChamado.PENDENTE:
+        raise AppException(
+            status.HTTP_409_CONFLICT,
+            f"Só é possível iniciar um chamado pendente (status atual: {chamado.status.value}).",
+            "INICIO_INVALIDO",
+        )
+
+    chamado.status = StatusChamado.EM_ANDAMENTO
+    chamado.dt_inicio_visita = _agora()
+    # Geolocalização é opcional: o técnico pode ter negado a permissão no
+    # navegador, e isso não pode impedir a visita de começar.
+    chamado.geoloc_latitude = body.latitude
+    chamado.geoloc_longitude = body.longitude
+
     await db.flush()
     await db.refresh(chamado)
     return ChamadoRead.model_validate(chamado)

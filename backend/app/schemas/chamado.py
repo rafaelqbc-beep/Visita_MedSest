@@ -39,6 +39,17 @@ class ReagendarRequest(BaseModel):
     nova_data: date
 
 
+class IniciarVisitaRequest(BaseModel):
+    """Geolocalização capturada no navegador ao iniciar a visita.
+
+    Opcional: o técnico pode ter negado a permissão de localização, e isso não
+    pode impedir a visita de começar.
+    """
+
+    latitude: float | None = None
+    longitude: float | None = None
+
+
 class ChamadoRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

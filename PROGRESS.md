@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-15
-**Sessão atual:** #5
+**Sessão atual:** #6
 **Status:** Em desenvolvimento
 
 ---
@@ -52,7 +52,7 @@ rastreabilidade que o e-mail dava antes.
 - [x] CRUD Usuários
 - [x] CRUD Clientes (com tipo_visita_padrao)
 - [x] CRUD Chamados + round-robin
-- [ ] Execução de visita (iniciar, setores, cargos, fotos, finalizar)
+- [x] Execução de visita (iniciar, setores, cargos, fotos) — falta só o "finalizar" (sessão #7)
 - [ ] Assinaturas no local (upload canvas cliente/técnico + finalizar visita)
 - [ ] Dashboard (KPIs + tipo de visita)
 - [ ] Exportação Word
@@ -79,13 +79,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #5 — CRUD de chamados + round-robin + notificações concluído. Nada em aberto ao encerrar._
+_Sessão #6 — execução da visita (iniciar, setores, cargos, fotos) concluída. Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida a partir daqui:
-6. Backend: endpoints de execução de visita (iniciar, setores, cargos, fotos)
 7. Backend: assinaturas + finalizar visita (upload das 2 assinaturas, PDF recibo ao cliente)
 8. Backend: dashboard
 9. Backend: exportação Word (embutir as assinaturas no documento)
@@ -153,6 +152,22 @@ Ordem sugerida a partir daqui:
 - **Não implementado de propósito:** motivo do cancelamento (não existe coluna; exigiria migration — avaliar se a operação sentir falta).
 - **Validado com smoke test:** 35/35 checagens OK — destaque para a **sequência circular do round-robin B → C → A → B** (o seed deixa o último em A), escopo de cada um dos 4 perfis, notificações registradas nos 2 canais, filtros, reagendamento e as travas de cancelamento. Dados de teste removidos e o round-robin restaurado para o estado do seed (último = A). Script removido.
 
+**Sessão #6 (2026-07-15) — Execução da visita (iniciar, setores, cargos, fotos):**
+- **`services/visita.py`** — centraliza a regra de acesso aos dados da visita, reusada pelos 3 routers:
+  - `get_chamado_visivel()` — leitura; mesma regra de escopo do `routers/chamados.py` (404, não 403, quando não pode ver).
+  - `get_chamado_editavel()` — escrita; **só o técnico externo responsável (ou ADMIN, como válvula de escape) e só com status `EM_ANDAMENTO`**. Depois de FINALIZADO os dados estão assinados pelo cliente — alterá-los invalidaria a assinatura. Erros: `NAO_E_RESPONSAVEL` (403) e `VISITA_NAO_EDITAVEL` (409).
+- **`PUT /api/chamados/{id}/iniciar`** — só o técnico externo do chamado, só a partir de `PENDENTE` (senão 409 `INICIO_INVALIDO`). Grava `dt_inicio_visita`, geolocalização e muda para `EM_ANDAMENTO`. **A geolocalização é opcional**: o técnico pode ter negado a permissão no navegador, e isso não pode impedir a visita de começar.
+- **`utils/file_handler.py`** — `salvar_imagem()` e `remover_arquivo()`:
+  - **Valida o conteúdo real com Pillow**, não só o `content_type` — o header vem do cliente e é falsificável. Um .txt renomeado para .jpg com `Content-Type: image/jpeg` é rejeitado (`ARQUIVO_INVALIDO`).
+  - Aceita JPEG/PNG/WEBP; limite de `MAX_FILE_SIZE_MB` (413 `ARQUIVO_MUITO_GRANDE`); rejeita arquivo vazio.
+  - **O nome do arquivo é gerado pelo servidor** (`uuid4` + extensão do formato detectado): o nome enviado pelo cliente nunca compõe o caminho em disco (evita path traversal e colisão). O nome original fica só no banco, em `nome_original`.
+  - `remover_arquivo()` confere que o caminho resolvido está dentro de `UPLOAD_DIR` antes de apagar — protege contra caminho manipulado no banco.
+- **Routers** `/api/setores`, `/api/cargos`, `/api/fotos` — CRUD completo com GET/POST/PUT/DELETE. Listagens **sem paginação de propósito**: são limitadas aos filhos de um único chamado/setor.
+  - `GET /api/setores?chamado_id=` retorna os setores com **cargos e fotos aninhados** (`selectinload`) — é o que a tela de visita e o relatório consomem, evitando N chamadas.
+  - `POST /api/fotos` é multipart (`setor_id`, `descricao`, `file`).
+- **Arquivos órfãos:** o cascade do banco apaga cargos/fotos junto com o setor, mas os arquivos em disco não saem sozinhos — os caminhos são coletados e apagados antes do delete. No upload, se o INSERT falhar depois do arquivo gravado, o arquivo é removido.
+- **Validado com smoke test:** 43/43 checagens OK — iniciar (técnico errado 404, gestor 403, duplo início 409, geoloc gravada), setores/cargos (CRUD, ordenação, aninhamento, gestor lê mas não escreve), fotos (upload JPG/PNG real, **texto disfarçado de jpg → 422**, PDF → 422, vazio → 422, acima do limite → 413), remoção apagando o arquivo do disco e cascade do setor limpando fotos do disco. Dados de teste removidos, round-robin restaurado, **zero arquivos órfãos** em `uploads/`. Script removido.
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
@@ -166,6 +181,11 @@ Ordem sugerida a partir daqui:
 **Sessão #1 (2026-07-14):**
 Criada toda a fundação do projeto: estrutura de pastas monorepo, arquivos raiz (.gitignore, README, docker-compose), base do backend (config, database, main) com todos os models e a migration inicial, seed.py, e a base do frontend (package.json, vite.config com PWA, tailwind com design tokens da paleta MedSest, tsconfig, types).
 
-**Para a próxima sessão (#6):** implementar os **endpoints de execução da visita** — `PUT /api/chamados/{id}/iniciar` (captura geolocalização, grava `dt_inicio_visita`, status → `EM_ANDAMENTO`, só o técnico externo do chamado) e o CRUD de **setores** (`/api/setores`), **cargos** (`/api/cargos`) e **upload de fotos** (`/api/fotos`, validar MIME e tamanho máx. 10MB, salvar em `uploads/` com caminho no banco). Regra central: só o técnico externo responsável edita, e só enquanto o chamado está `EM_ANDAMENTO`. Reaproveitar `require_roles`, `_get_visivel_ou_404`/escopo de `routers/chamados.py`, `schemas/common.py` e `utils/file_handler.py` (ainda não existe — criar). Ler `models/setor.py`, `cargo.py`, `foto.py` e `routers/chamados.py`. A sessão #7 vem depois com as assinaturas + finalizar visita.
+**Para a próxima sessão (#7):** implementar as **assinaturas + finalizar visita** — o encerramento do fluxo de campo:
+- `POST /api/chamados/{id}/assinatura-cliente` (multipart: imagem do canvas + `nome` + `cpf`, validar CPF com `utils/validators.validar_cpf`, gravar em `uploads/assinaturas/` via `salvar_imagem`, preencher `assinatura_cliente_*` e `dt_assinatura_cliente`).
+- `POST /api/chamados/{id}/assinatura-tecnico` (multipart: imagem; identidade vem do usuário logado; preenche `assinatura_tecnico_caminho` e `dt_assinatura_tecnico`).
+- `PUT /api/chamados/{id}/finalizar` — **validar mínimo 1 setor + 1 cargo** e **exigir as duas assinaturas** (senão 409); gravar `dt_fim_visita`, `geoloc_assinatura_*`, `dt_liberado_tecnico_interno`; status → `FINALIZADO`; disparar `notificar_visita_liberada` (técnico interno) e `notificar_recibo_cliente` (PDF de cópia ao cliente — sem exigir ação).
+- Ambos só para o técnico externo responsável e com o chamado `EM_ANDAMENTO` → reusar `get_chamado_editavel` de `services/visita.py`.
+- Adicionar os 2 novos eventos em `services/notificacoes.py` (mesmo padrão: registram FALHOU até o SMTP existir). O PDF do recibo pode ficar para a sessão da exportação, se preferir — nesse caso o e-mail vai sem anexo.
 
 Banco já pronto; subir API: `cd backend && venv\Scripts\activate && uvicorn app.main:app --reload`.
