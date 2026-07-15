@@ -40,12 +40,23 @@ def _twilio_configurado() -> bool:
     )
 
 
-async def _enviar_email(destinatario: str, assunto: str, corpo: str) -> tuple[bool, str]:
-    """Tenta enviar um e-mail. Retorna (sucesso, detalhes)."""
+async def _enviar_email(
+    destinatario: str,
+    assunto: str,
+    corpo: str,
+    anexos: list[tuple[str, bytes]] | None = None,
+) -> tuple[bool, str]:
+    """Tenta enviar um e-mail. Retorna (sucesso, detalhes).
+
+    `anexos` é uma lista de (nome_do_arquivo, conteúdo).
+    """
+    resumo = f"Assunto: {assunto}"
+    if anexos:
+        resumo += f"; anexos: {', '.join(nome for nome, _ in anexos)}"
     if not _smtp_configurado():
-        return False, f"SMTP não configurado; e-mail não enviado. Assunto: {assunto}"
-    # TODO(sessão futura): integrar fastapi-mail e enviar de verdade.
-    return False, f"Envio de e-mail ainda não implementado. Assunto: {assunto}"
+        return False, f"SMTP não configurado; e-mail não enviado. {resumo}"
+    # TODO(quando houver credenciais): integrar fastapi-mail e enviar de verdade.
+    return False, f"Envio de e-mail ainda não implementado. {resumo}"
 
 
 async def _enviar_whatsapp(numero: str, mensagem: str) -> tuple[bool, str]:
@@ -217,12 +228,7 @@ async def notificar_visita_liberada(chamado_id: uuid.UUID, db: AsyncSession) -> 
 
 
 async def notificar_recibo_cliente(chamado_id: uuid.UUID, db: AsyncSession) -> None:
-    """E-mail ao cliente: cópia do relatório assinado (recibo, sem pedir ação).
-
-    TODO(sessão da exportação): anexar o PDF do relatório assinado. Ainda não há
-    biblioteca de PDF no projeto (python-docx gera .docx, não PDF) — por ora o
-    e-mail seria só o corpo.
-    """
+    """E-mail ao cliente: cópia em PDF do relatório assinado (sem pedir ação)."""
     chamado = await db.get(Chamado, chamado_id)
     if chamado is None:
         return
@@ -258,7 +264,29 @@ async def notificar_recibo_cliente(chamado_id: uuid.UUID, db: AsyncSession) -> N
         f"Em caso de dúvida, procure seu gestor comercial."
     )
 
-    sucesso, detalhes = await _enviar_email(cliente.email_contato, assunto, corpo)
+    # Import local: pdf_export importa models, e um import no topo criaria
+    # ciclo entre os módulos de serviço.
+    from app.services.pdf_export import gerar_recibo_pdf
+
+    anexos: list[tuple[str, bytes]] = []
+    try:
+        conteudo, nome_arquivo = await gerar_recibo_pdf(chamado.id, db)
+        anexos.append((nome_arquivo, conteudo))
+    except Exception as erro:  # noqa: BLE001
+        # Falhar o PDF não pode derrubar o "finalizar visita": a visita já foi
+        # assinada. Registra e segue com o e-mail sem anexo.
+        _registrar(
+            db,
+            chamado_id=chamado.id,
+            usuario_id=None,
+            email_destinatario=cliente.email_contato,
+            tipo=CanalNotif.EMAIL,
+            evento=EVENTO_RECIBO_CLIENTE,
+            sucesso=False,
+            detalhes=f"Falha ao gerar o PDF do recibo: {erro}",
+        )
+
+    sucesso, detalhes = await _enviar_email(cliente.email_contato, assunto, corpo, anexos=anexos)
     _registrar(
         db,
         chamado_id=chamado.id,

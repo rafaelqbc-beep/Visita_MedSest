@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-15
-**Sessão atual:** #8
+**Sessão atual:** #9
 **Status:** Em desenvolvimento
 
 ---
@@ -55,9 +55,11 @@ rastreabilidade que o e-mail dava antes.
 - [x] Execução de visita (iniciar, setores, cargos, fotos, finalizar)
 - [x] Assinaturas no local (upload canvas cliente/técnico + finalizar visita)
 - [x] Dashboard (KPIs + tipo de visita)
-- [ ] Exportação Word — **+ PDF do recibo do cliente** (precisa escolher uma lib de PDF)
-- [ ] Notificações (e-mail + WhatsApp) — **estrutura pronta (4 eventos), envio real pendente** (ver sessão #5)
+- [x] Exportação Word + PDF do recibo do cliente (fpdf2)
+- [ ] Notificações (e-mail + WhatsApp) — **estrutura pronta (4 eventos) e PDF anexado; só falta o envio real** (aguardando credenciais)
 - [x] Seed script
+
+> 🎉 **O backend está completo** (exceto o envio real das notificações, que depende de credenciais).
 
 ### Frontend
 - [x] Design system + componentes base (tokens + Tailwind config)
@@ -79,14 +81,25 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #8 — dashboard concluído. Nada em aberto ao encerrar. **Falta só a exportação Word para o backend ficar completo.**_
+_Sessão #9 — exportação Word + PDF concluída. **BACKEND COMPLETO.** Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
-Ordem sugerida a partir daqui:
-9. Backend: exportação Word (embutir as assinaturas no documento) + PDF do recibo
-10+. Frontend (auth → layout → dashboard → chamados → visita → conferência/assinaturas → relatório → cadastros → PWA)
+**Começa o frontend.** Ordem sugerida:
+10. Frontend: autenticação (login, contexto, interceptor de refresh)
+11. Frontend: layout (Sidebar, Header, rotas por role)
+12. Frontend: dashboard (Recharts)
+13. Frontend: gestão de chamados (gestor)
+14. Frontend: módulo de visita tablet + offline/IndexedDB
+15. Frontend: tela de conferência + assinaturas no canvas
+16. Frontend: módulo de relatório (técnico interno)
+17. Frontend: cadastros admin
+18. PWA (ícones, service worker, telas)
+19. DEPLOY.md
+
+**Pendente sem sessão definida (depende de terceiros):**
+- Envio real de e-mail/WhatsApp — aguardando credenciais SMTP/Twilio (o usuário avisou em 15/07 que está providenciando).
 
 ---
 
@@ -190,6 +203,22 @@ Ordem sugerida a partir daqui:
 - **Validado com smoke test:** 46/46 checagens OK — os números foram **conferidos contra o seed conhecido**, não só quanto ao formato: total_abertos=2, duração média=2.0h, exportação=5.12 dias (5d3h), NOVO_CLIENTE=40%, conversão=50%, carga só do interno A. Também: escopo dos 4 perfis (Ana vê 3, interno A vê só 1 FINALIZADO, gestor vê 5), filtros de tipo/período, e 401 sem token. Script removido; dashboard não cria dados, nada a limpar.
 - **Nota:** uma falha inicial do teste era do próprio teste (esqueci as 3h no cálculo esperado), não do código — a expectativa foi corrigida para 5.12.
 
+**Sessão #9 (2026-07-15) — Exportação Word + PDF do recibo (backend completo):**
+- **Biblioteca de PDF escolhida com o usuário: `fpdf2` 2.8.2.** Puro Python, sem dependência de sistema. Descartados: `weasyprint` (exige GTK no Windows, quebraria o ambiente local dele) e `reportlab` (mais poderoso, mas verboso demais para um documento linear).
+- **⚠️ Fontes nativas do fpdf2 são Latin-1.** Português cabe inteiro (`ã ç é õ` funcionam — verificado visualmente), mas travessão `—`, aspas curvas e emoji não. Criado **`utils/formatacao.py`** com `texto_latin1()`, que troca a pontuação tipográfica por equivalentes ASCII e descarta o resto. **Todo texto que vai para o PDF passa por ele.** Se um dia quiserem tipografia fina, dá para embutir um TTF (~700KB) sem trocar de biblioteca. O `.docx` é UTF-8 e não tem essa limitação.
+- `utils/formatacao.py` também tem `dt_br`/`data_br` (converte UTC → America/Sao_Paulo e formata) e `coord_br`.
+- **`services/word_export.py`** — o entregável do técnico interno: cabeçalho, dados do cliente e da visita, setores com **tabela de cargos** e **fotos embutidas com legenda**, e a página de assinaturas (as duas imagens, nome/CPF do cliente, timestamps e geolocalização). Rodapé com a ressalva de que o documento reúne insumos e não constitui o PGR.
+- **`services/pdf_export.py`** — o comprovante do cliente: mesma identidade visual (azul #1A3A5C), introdução, dados da visita, resumo de setores/cargos e os dois blocos de assinatura lado a lado. Sem fotos (é um comprovante, não o relatório técnico).
+- **`routers/exportacao.py`**:
+  - `GET /api/chamados/{id}/exportar-word` — **só TECNICO_INTERNO atribuído + ADMIN** (403 para gestor/técnico externo) e só com `FINALIZADO`. Nota: para o técnico interno o escopo já barra antes e devolve **404** (ele só enxerga FINALIZADOS); o 409 `CHAMADO_NAO_FINALIZADO` só aparece para o ADMIN. É coerente com o resto do sistema.
+  - `GET /api/chamados/{id}/recibo-pdf` — regra de visibilidade normal do chamado: o **gestor precisa conseguir mostrar/reenviar o comprovante ao cliente**.
+  - `Content-Disposition` com `filename*` (RFC 5987) para preservar acentos no nome do arquivo.
+- **`dt_exportacao_word` gravado só no primeiro download** — o KPI mede a entrega; reexportar não é uma nova entrega. Testado.
+- **`notificar_recibo_cliente` agora anexa o PDF** (fechando o TODO da sessão #7). `_enviar_email` ganhou o parâmetro `anexos`. Se a geração do PDF falhar, registra o erro e **segue com o e-mail sem anexo** — a visita já foi assinada, e um PDF quebrado não pode derrubar o "finalizar visita". Import local de `pdf_export` dentro da função para evitar ciclo entre os módulos de serviço.
+- **Validado com smoke test:** 40/40 checagens OK. Não checou só HTTP — **abriu o .docx gerado e conferiu o conteúdo** (razão social, setores, cargos, descrições, legendas das fotos, nome/CPF de quem assinou, geolocalização), contou **4 imagens embutidas** (2 fotos + 2 assinaturas) e 3 tabelas, e validou o PDF (magic bytes, EOF, tamanho). Além disso o **PDF foi renderizado em imagem e inspecionado visualmente**.
+- **Duas correções que só a inspeção visual pegou:** (1) os textos fixos que eu havia escrito sem acento ("Visita Tecnica", "responsavel", "nao requer nenhuma acao") — inaceitável num documento que vai ao cliente, corrigidos para português correto; (2) o teste usava assinatura branca sobre papel branco, invisível — trocada por um traço real. Também confirmei na imagem que o travessão `—` vira `-` corretamente.
+- **Nota:** `pypdfium2` foi instalado só para renderizar o PDF na inspeção e **desinstalado depois** — o venv continua batendo com o `requirements.txt` (`pip check` limpo).
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
@@ -203,14 +232,34 @@ Ordem sugerida a partir daqui:
 **Sessão #1 (2026-07-14):**
 Criada toda a fundação do projeto: estrutura de pastas monorepo, arquivos raiz (.gitignore, README, docker-compose), base do backend (config, database, main) com todos os models e a migration inicial, seed.py, e a base do frontend (package.json, vite.config com PWA, tailwind com design tokens da paleta MedSest, tsconfig, types).
 
-**Marco atingido na #7:** o **backend do fluxo de campo está completo** — abrir chamado → round-robin → iniciar → registrar setores/cargos/fotos → conferir → assinar (cliente + técnico) → finalizar → liberar ao técnico interno.
+## 🎉 MARCO: BACKEND COMPLETO (sessão #9)
 
-**Para a próxima sessão (#9) — a última do backend:** **exportação Word + PDF do recibo**.
-- **`GET /api/chamados/{id}/exportar-word`** (`routers/exportacao.py` + `services/word_export.py`, com `python-docx`): gera o `.docx` com os dados do chamado, setores, cargos e **fotos embutidas**, mais as **duas assinaturas** (imagens de `uploads/assinaturas/`) com nome/CPF do cliente, data/hora e geolocalização. Só o **técnico interno atribuído** (e ADMIN), e só com o chamado `FINALIZADO` → reusar `get_chamado_visivel`, que já garante isso para o perfil TECNICO_INTERNO. Gravar `dt_exportacao_word` **só no primeiro download** (o KPI de tempo médio depende disso). Retornar como `StreamingResponse`/`FileResponse` com `Content-Disposition`.
-- **⚠️ DECISÃO PENDENTE — biblioteca de PDF:** o recibo do cliente (decidido na sessão #4) precisa de PDF, e `python-docx` só gera `.docx`. **Perguntar ao usuário** antes de adicionar: sugestão `fpdf2` (leve, puro Python, sem dependência de sistema) ou `reportlab` (mais poderoso, mais verboso). **Evitar `weasyprint`** — exige GTK no Windows e quebraria o ambiente local dele. Depois de escolher: adicionar ao `requirements.txt`, gerar o PDF do relatório assinado e anexá-lo em `notificar_recibo_cliente` (`services/notificacoes.py`, já tem o TODO no lugar).
-- Depois disso o backend fica completo e começa o frontend (auth → layout → dashboard → chamados → visita → assinaturas → relatório → cadastros → PWA).
+Todo o fluxo funciona de ponta a ponta:
+```
+gestor abre chamado (round-robin atribui o tecnico interno)
+  -> tecnico externo inicia a visita (geoloc)
+  -> registra setores, cargos e fotos
+  -> confere com o cliente no local
+  -> cliente assina (nome + CPF) e tecnico assina
+  -> finaliza -> FINALIZADO
+      -> tecnico interno e notificado, visualiza e exporta o .docx
+      -> cliente recebe o comprovante em PDF
+```
+**API:** auth (JWT + refresh) · unidades · usuários · clientes · chamados · setores ·
+cargos · fotos · dashboard · exportação. Tudo com escopo por perfil e erros
+`{detail, code}`. Explorar em `/docs`.
+
+**Para a próxima sessão (#10) — começa o frontend:** implementar a **autenticação**:
+- `services/api.ts` — Axios com `baseURL` do `VITE_API_BASE_URL` e `withCredentials: true` (o refresh token vem em cookie httpOnly).
+- **Interceptor de 401** que chama `POST /api/auth/refresh` e refaz a requisição. Cuidados: não tentar refresh na própria rota de refresh (loop infinito), e **enfileirar as requisições concorrentes** enquanto um refresh está em andamento — senão 5 requisições que tomam 401 juntas disparam 5 refreshes, e a rotação de token invalida os outros 4.
+- `authService.ts` + contexto/store de auth. **access_token em memória** (não em localStorage).
+- Tela de login conforme o design system: logo centralizado, card branco, e-mail, senha com toggle, botão "Entrar". React Hook Form + Zod.
+- Rotas protegidas por role (o layout vem na #11).
+- Login de teste: `admin@medsest.com.br` / `Admin@123`.
+- O Vite já faz proxy de `/api` para `localhost:8000` (ver `vite.config.ts`) — subir os dois juntos.
 
 **Pendências que dependem do usuário:**
-- **Credenciais de SMTP e Twilio** — ele avisou (15/07) que está trabalhando nisso. Quando chegarem: preencher o `.env` e implementar `_enviar_email`/`_enviar_whatsapp` em `services/notificacoes.py` (os TODOs estão nos lugares certos). Nenhum call site muda; os 4 eventos passam a registrar ENVIADO em vez de FALHOU.
+- **Credenciais de SMTP e Twilio** — ele avisou (15/07) que está providenciando. Quando chegarem: preencher o `.env` e implementar `_enviar_email`/`_enviar_whatsapp` em `services/notificacoes.py` (os TODOs estão nos lugares certos, e `_enviar_email` já aceita `anexos`). **Nenhum call site muda**; os 4 eventos passam a registrar ENVIADO em vez de FALHOU.
 
 Banco já pronto; subir API: `cd backend && venv\Scripts\activate && uvicorn app.main:app --reload`.
+Frontend: `cd frontend && npm run dev`.

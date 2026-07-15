@@ -24,8 +24,9 @@ python-multipart==0.0.20
 aiofiles==24.1.0
 Pillow==11.0.0                   # validação/tratamento de imagens
 
-# --- Relatório Word ---
-python-docx==1.1.2
+# --- Relatórios ---
+python-docx==1.1.2                # .docx do técnico interno
+fpdf2==2.8.2                      # PDF do recibo do cliente (puro Python, sem libs de sistema)
 
 # --- Notificações ---
 fastapi-mail==1.4.2
