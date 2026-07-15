@@ -63,6 +63,7 @@ rastreabilidade que o e-mail dava antes.
 
 ### Frontend
 - [x] Design system + componentes base (tokens + Tailwind config)
+- [x] Identidade visual: logo, símbolo vetorial, favicon e ícones do PWA
 - [ ] Autenticação (login, contexto, interceptors)
 - [ ] Layout (Sidebar, Header, rotas por role)
 - [ ] Dashboard
@@ -71,7 +72,7 @@ rastreabilidade que o e-mail dava antes.
 - [ ] Tela de conferência + assinaturas no canvas (cliente e técnico)
 - [ ] Módulo de relatório (técnico interno)
 - [ ] Cadastros admin
-- [ ] PWA (service worker, manifest) — configurado no vite.config, faltam ícones/telas
+- [ ] PWA (service worker, manifest) — configurado, **ícones prontos**; faltam as telas
 
 ### Infraestrutura
 - [ ] DEPLOY.md
@@ -219,6 +220,22 @@ _Sessão #9 — exportação Word + PDF concluída. **BACKEND COMPLETO.** Nada e
 - **Duas correções que só a inspeção visual pegou:** (1) os textos fixos que eu havia escrito sem acento ("Visita Tecnica", "responsavel", "nao requer nenhuma acao") — inaceitável num documento que vai ao cliente, corrigidos para português correto; (2) o teste usava assinatura branca sobre papel branco, invisível — trocada por um traço real. Também confirmei na imagem que o travessão `—` vira `-` corretamente.
 - **Nota:** `pypdfium2` foi instalado só para renderizar o PDF na inspeção e **desinstalado depois** — o venv continua batendo com o `requirements.txt` (`pip check` limpo).
 
+**Sessão #9b (2026-07-15) — Identidade visual (logo MedSest):**
+- **A única arte disponível é `frontend/public/logo_medsest.png`, 300×78 px, RGBA transparente.** Não existe vetorial; o cliente confirmou que só tem esse arquivo. Se um dia aparecer o SVG/AI oficial, vale substituir.
+- **Cores reais da marca, amostradas do arquivo:** verde `#006C30` (gradiente `#009848`→`#004225`) e azul royal `#2E3287`→`#164A9B`. **O azul da marca NÃO é o nosso `#1A3A5C`** — é bem mais saturado.
+- **Decisões tomadas com o cliente:**
+  - **Azul da interface continua `#1A3A5C`** (marinho fosco). Uma sidebar inteira no azul royal saturado cansaria a vista num tablet usado o dia todo; o prompt também pedia "sem cores vibrantes". O azul royal fica só no logo.
+  - **Verde da marca entra como cor de ação/destaque** — adicionado ao Tailwind como `brand.green` / `brand.green-hover` / `brand.green-bg`, e a classe `.btn-action` em `index.css` (para o passo que conclui um fluxo, tipo "Finalizar Visita" — não para "Salvar" comum).
+- **Símbolo recriado em vetor** (`public/simbolo-medsest.svg`), com aprovação do cliente. Motivo: a cruz tem só ~76px no PNG; ampliar para o ícone de 512 do PWA ou para o cabeçalho impresso ficaria borrado. **Comprovado com render lado a lado** — o PNG ampliado borra a partir de ~128px, o vetor não.
+- **Como o vetor foi feito (não foi no olho):** mapa ASCII do PNG pixel a pixel + medição das bordas em resolução cheia + amostragem dos gradientes. Isso derrubou duas hipóteses erradas minhas:
+  1. Achei que a barra verde era **inclinada** (acompanhando o itálico do logotipo) — era artefato da amostragem de 2 em 2 px. Ela é reta, `x 30-47` de cima a baixo.
+  2. Apliquei stroke branco em cada barra; medindo a linha `y=38` vi que no original **o azul encosta direto no verde** — o contorno branco existe só no contorno externo. Refeito com uma camada branca dilatada por baixo e as barras sem stroke.
+- **Fidelidade final: 90.3% de pixels coincidentes** com o original (o resto é antialiasing). Estrutura: 4 barras (azul vertical e verde horizontal atrás, azul horizontal e verde vertical na frente) — o original tem um efeito de trama em que as de trás só assomam nas bordas.
+- **Ícones gerados a partir do vetor:** `favicon.ico` (16/32/48/64), `pwa-192x192.png`, `pwa-512x512.png`, `pwa-maskable-512x512.png` (símbolo menor, na zona segura — o Android recorta em círculo/squircle), `apple-touch-icon.png` (180, para iPad) e `simbolo-medsest-512.png` (raster para o Word/PDF, que não consomem SVG). **Fundo branco nos ícones**: o símbolo foi desenhado com contorno branco para fundo claro, e o iOS não respeita transparência em ícone (viraria fundo preto).
+- **BUG corrigido:** o `vite-plugin-pwa` assume `lang: 'en'` se não for informado — num app inteiramente em português. Fixado `lang: 'pt-BR'` no manifest.
+- **Sobre a sidebar (azul-marinho):** o "Med" do logo é azul-marinho e sumiria no fundo escuro. Não existe versão clara do logo. Solução: usar **o símbolo (que tem contorno branco próprio) + "MedSest Visita" como texto branco em HTML**. Fica nítido e não depende de arte que não temos.
+- **Ferramentas:** `@resvg/resvg-js` (Node) para rasterizar o SVG — `cairosvg` falhou no Windows por falta da DLL do cairo, o mesmo tipo de dependência de sistema que fez a gente descartar o `weasyprint`. O resvg ficou só em `%TEMP%`, fora do projeto.
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
@@ -253,7 +270,8 @@ cargos · fotos · dashboard · exportação. Tudo com escopo por perfil e erros
 - `services/api.ts` — Axios com `baseURL` do `VITE_API_BASE_URL` e `withCredentials: true` (o refresh token vem em cookie httpOnly).
 - **Interceptor de 401** que chama `POST /api/auth/refresh` e refaz a requisição. Cuidados: não tentar refresh na própria rota de refresh (loop infinito), e **enfileirar as requisições concorrentes** enquanto um refresh está em andamento — senão 5 requisições que tomam 401 juntas disparam 5 refreshes, e a rotação de token invalida os outros 4.
 - `authService.ts` + contexto/store de auth. **access_token em memória** (não em localStorage).
-- Tela de login conforme o design system: logo centralizado, card branco, e-mail, senha com toggle, botão "Entrar". React Hook Form + Zod.
+- Tela de login conforme o design system: **logo `/logo_medsest.png` centralizado**, card branco, e-mail, senha com toggle, botão "Entrar". React Hook Form + Zod.
+- Assets prontos em `frontend/public/`: `logo_medsest.png` (logo completo, fundo claro), `simbolo-medsest.svg` (símbolo vetorial — usar na sidebar escura, junto de "MedSest Visita" em texto branco).
 - Rotas protegidas por role (o layout vem na #11).
 - Login de teste: `admin@medsest.com.br` / `Admin@123`.
 - O Vite já faz proxy de `/api` para `localhost:8000` (ver `vite.config.ts`) — subir os dois juntos.

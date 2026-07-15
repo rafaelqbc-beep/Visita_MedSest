@@ -8,11 +8,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'logo.png'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo_medsest.png'],
       manifest: {
         name: 'MedSest Visita',
         short_name: 'MedSest',
         description: 'Gestão de visitas técnicas MedSest',
+        lang: 'pt-BR', // o plugin assume 'en' se não for informado
         theme_color: '#1A3A5C',
         background_color: '#F8F9FA',
         display: 'standalone',
@@ -21,6 +22,14 @@ export default defineConfig({
         icons: [
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          // maskable: o Android recorta o ícone em círculo/squircle, então o
+          // símbolo vem menor, dentro da zona segura
+          {
+            src: 'pwa-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
         ],
       },
       workbox: {

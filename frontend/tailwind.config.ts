@@ -3,6 +3,12 @@ import type { Config } from 'tailwindcss'
 /**
  * Design System MedSest Visita.
  * Paleta corporativa (azul marinho) — elegante, profissional, sem cores vibrantes.
+ *
+ * Sobre a marca: o logo da MedSest usa verde (#006C30) e um azul royal
+ * (#2E3287). Decisão tomada com o cliente: a interface mantém o azul marinho
+ * #1A3A5C como base — uma sidebar inteira no azul royal saturado cansaria a
+ * vista num tablet usado o dia todo — e o verde da marca entra como cor de
+ * ação/destaque (ver `brand` abaixo).
  */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
@@ -17,6 +23,13 @@ export default {
         },
         secondary: '#2E6DA4', // azul médio
         accent: '#E8EEF4', // azul muito claro (hover)
+        // Cores da marca, amostradas do logo
+        brand: {
+          green: '#006C30', // verde MedSest — ações e destaques
+          'green-hover': '#00552A',
+          'green-bg': '#E6F4EC', // fundo claro para badges/realces
+          blue: '#2E3287', // azul royal do logo (usar com parcimônia)
+        },
         sidebar: {
           bg: '#1A3A5C',
           text: '#FFFFFF',

@@ -35,6 +35,13 @@
       bg-white px-4 font-medium text-content-label transition-colors hover:bg-gray-50;
   }
 
+  /* Botão de ação — verde da marca. Para o passo que conclui um fluxo
+     (Finalizar Visita, Confirmar assinatura), não para "Salvar" comum. */
+  .btn-action {
+    @apply inline-flex h-10 min-h-touch items-center justify-center gap-2 rounded-lg bg-brand-green px-4
+      font-medium text-white transition-colors hover:bg-brand-green-hover disabled:opacity-50;
+  }
+
   /* Card padrão */
   .card {
     @apply rounded-xl border border-border bg-surface p-4 shadow-card;
