@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-15
-**Sessão atual:** #6
+**Sessão atual:** #7
 **Status:** Em desenvolvimento
 
 ---
@@ -52,11 +52,11 @@ rastreabilidade que o e-mail dava antes.
 - [x] CRUD Usuários
 - [x] CRUD Clientes (com tipo_visita_padrao)
 - [x] CRUD Chamados + round-robin
-- [x] Execução de visita (iniciar, setores, cargos, fotos) — falta só o "finalizar" (sessão #7)
-- [ ] Assinaturas no local (upload canvas cliente/técnico + finalizar visita)
+- [x] Execução de visita (iniciar, setores, cargos, fotos, finalizar)
+- [x] Assinaturas no local (upload canvas cliente/técnico + finalizar visita)
 - [ ] Dashboard (KPIs + tipo de visita)
-- [ ] Exportação Word
-- [ ] Notificações (e-mail + WhatsApp) — **estrutura pronta, envio real pendente** (ver sessão #5)
+- [ ] Exportação Word — **+ PDF do recibo do cliente** (precisa escolher uma lib de PDF)
+- [ ] Notificações (e-mail + WhatsApp) — **estrutura pronta (4 eventos), envio real pendente** (ver sessão #5)
 - [x] Seed script
 
 ### Frontend
@@ -79,13 +79,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #6 — execução da visita (iniciar, setores, cargos, fotos) concluída. Nada em aberto ao encerrar._
+_Sessão #7 — assinaturas + finalizar visita concluídas. **O backend do fluxo de campo está completo de ponta a ponta.** Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida a partir daqui:
-7. Backend: assinaturas + finalizar visita (upload das 2 assinaturas, PDF recibo ao cliente)
 8. Backend: dashboard
 9. Backend: exportação Word (embutir as assinaturas no documento)
 10+. Frontend (auth → layout → dashboard → chamados → visita → conferência/assinaturas → relatório → cadastros → PWA)
@@ -168,6 +167,17 @@ Ordem sugerida a partir daqui:
 - **Arquivos órfãos:** o cascade do banco apaga cargos/fotos junto com o setor, mas os arquivos em disco não saem sozinhos — os caminhos são coletados e apagados antes do delete. No upload, se o INSERT falhar depois do arquivo gravado, o arquivo é removido.
 - **Validado com smoke test:** 43/43 checagens OK — iniciar (técnico errado 404, gestor 403, duplo início 409, geoloc gravada), setores/cargos (CRUD, ordenação, aninhamento, gestor lê mas não escreve), fotos (upload JPG/PNG real, **texto disfarçado de jpg → 422**, PDF → 422, vazio → 422, acima do limite → 413), remoção apagando o arquivo do disco e cascade do setor limpando fotos do disco. Dados de teste removidos, round-robin restaurado, **zero arquivos órfãos** em `uploads/`. Script removido.
 
+**Sessão #7 (2026-07-15) — Assinaturas + Finalizar visita (fecho do fluxo de campo):**
+- **`POST /api/chamados/{id}/assinatura-cliente`** (multipart: `file`, `nome`, `cpf`) — CPF validado por dígito verificador (422 `CPF_INVALIDO`), nome não pode ser vazio (422 `NOME_OBRIGATORIO`), imagem gravada em `uploads/assinaturas/` pelo mesmo `salvar_imagem` (valida conteúdo real). O CPF é **normalizado com máscara** (`formatar_cpf`) antes de gravar, então o banco fica consistente independente de como o frontend enviar.
+- **`POST /api/chamados/{id}/assinatura-tecnico`** (multipart: `file`) — só o traço; a identidade vem do usuário logado.
+- **Reassinatura suportada:** traço ruim ou pessoa errada → basta postar de novo. O arquivo anterior é apagado do disco, sem deixar órfão.
+- **`PUT /api/chamados/{id}/finalizar`** — o portão do fluxo. Valida, nesta ordem: ≥1 setor (`SEM_SETORES`), ≥1 cargo (`SEM_CARGOS`), assinatura do cliente (`SEM_ASSINATURA_CLIENTE`), assinatura do técnico (`SEM_ASSINATURA_TECNICO`) — todos 409. Passando, grava `dt_fim_visita`, `geoloc_assinatura_*`, `dt_liberado_tecnico_interno` (= agora, pois o aceite é no local) e status → `FINALIZADO`; dispara `notificar_visita_liberada` + `notificar_recibo_cliente`.
+- Os 3 endpoints usam `get_chamado_editavel` — só o técnico externo responsável e só com `EM_ANDAMENTO`. **Depois de FINALIZADO tudo trava:** não dá para criar setor, reassinar nem refinalizar (409). É o que preserva a integridade da assinatura.
+- **Geolocalização da assinatura capturada no `finalizar`** (não em cada assinatura): as duas assinaturas e o encerramento acontecem no mesmo lugar, com minutos de diferença — um ponto só já é evidência suficiente e simplifica o frontend. Opcional, como no `iniciar`.
+- **`services/notificacoes.py`** ganhou `notificar_visita_liberada` (e-mail ao técnico interno) e `notificar_recibo_cliente` (cópia ao cliente, sem exigir ação). Se o cliente não tem `email_contato`, registra FALHOU dizendo isso, em vez de falhar silenciosamente.
+- **⚠️ PENDÊNCIA REGISTRADA — PDF do recibo:** o cliente decidiu (sessão #4) receber o relatório assinado em PDF. **Não há biblioteca de PDF no projeto** — `python-docx` gera `.docx`, não PDF. Será preciso escolher uma (`reportlab` ou `fpdf2`; `weasyprint` exige GTK no Windows e complica o dev local) e adicionar ao `requirements.txt`. Fica para a sessão da exportação. Por ora o `notificar_recibo_cliente` monta o corpo do e-mail sem anexo — e nem envia, pois o SMTP também não está configurado.
+- **Validado com smoke test:** 38/38 checagens OK — percorre o fluxo de campo inteiro (chamado → iniciar → setor → cargo → assinaturas → finalizar → liberação) e cada trava no caminho: finalizar sem setor/cargo/assinaturas, CPF inválido, nome vazio, assinatura que não é imagem, técnico de outro chamado (404), reassinatura apagando o arquivo antigo, **técnico interno recebendo 404 antes de finalizar e 200 depois** (a regra de liberação, provada), e tudo travando após FINALIZADO. Dados de teste e arquivos removidos; banco e `uploads/` de volta ao estado do seed. Scripts removidos.
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
@@ -181,11 +191,15 @@ Ordem sugerida a partir daqui:
 **Sessão #1 (2026-07-14):**
 Criada toda a fundação do projeto: estrutura de pastas monorepo, arquivos raiz (.gitignore, README, docker-compose), base do backend (config, database, main) com todos os models e a migration inicial, seed.py, e a base do frontend (package.json, vite.config com PWA, tailwind com design tokens da paleta MedSest, tsconfig, types).
 
-**Para a próxima sessão (#7):** implementar as **assinaturas + finalizar visita** — o encerramento do fluxo de campo:
-- `POST /api/chamados/{id}/assinatura-cliente` (multipart: imagem do canvas + `nome` + `cpf`, validar CPF com `utils/validators.validar_cpf`, gravar em `uploads/assinaturas/` via `salvar_imagem`, preencher `assinatura_cliente_*` e `dt_assinatura_cliente`).
-- `POST /api/chamados/{id}/assinatura-tecnico` (multipart: imagem; identidade vem do usuário logado; preenche `assinatura_tecnico_caminho` e `dt_assinatura_tecnico`).
-- `PUT /api/chamados/{id}/finalizar` — **validar mínimo 1 setor + 1 cargo** e **exigir as duas assinaturas** (senão 409); gravar `dt_fim_visita`, `geoloc_assinatura_*`, `dt_liberado_tecnico_interno`; status → `FINALIZADO`; disparar `notificar_visita_liberada` (técnico interno) e `notificar_recibo_cliente` (PDF de cópia ao cliente — sem exigir ação).
-- Ambos só para o técnico externo responsável e com o chamado `EM_ANDAMENTO` → reusar `get_chamado_editavel` de `services/visita.py`.
-- Adicionar os 2 novos eventos em `services/notificacoes.py` (mesmo padrão: registram FALHOU até o SMTP existir). O PDF do recibo pode ficar para a sessão da exportação, se preferir — nesse caso o e-mail vai sem anexo.
+**Marco atingido na #7:** o **backend do fluxo de campo está completo** — abrir chamado → round-robin → iniciar → registrar setores/cargos/fotos → conferir → assinar (cliente + técnico) → finalizar → liberar ao técnico interno.
+
+**Para a próxima sessão (#8):** implementar o **dashboard** (`GET /api/dashboard?unidade_id=&periodo_inicio=&periodo_fim=&tipo_visita=`) com `schemas/dashboard.py`:
+- **KPIs:** chamados abertos (PENDENTE + EM_ANDAMENTO); visitas realizadas no mês; a vencer nos próximos 15 dias; tempo médio abertura→visita (dias); tempo médio de duração da visita (horas); tempo médio finalização→exportação Word (dias).
+  ⚠️ Os KPIs "aguardando validação" e "aguardando liberação" do prompt original **não existem mais** (ver MUDANÇA DE ESCOPO no topo).
+- **KPIs por tipo de visita:** quantidade e % por Novo Cliente / Renovação / Visita Técnica, com filtro de período; distribuição para o gráfico de pizza; e a tabela de conversão (dos Novos Clientes, quantos tiveram visita concluída no período).
+- **Séries para os gráficos:** chamados por status (donut); volume por mês nos últimos 6 meses empilhado por tipo (bar); tempo médio por técnico externo (bar horizontal).
+- **Distribuição dos técnicos internos:** quantos PGRs cada um tem pendentes de exportação (FINALIZADO sem `dt_exportacao_word`).
+- **Escopo por role igual ao de chamados:** ADMIN tudo · GESTOR só a unidade · TECNICO_EXTERNO só os seus · TECNICO_INTERNO só os atribuídos e FINALIZADOS. Reusar a lógica de `_aplicar_escopo` de `routers/chamados.py` (considerar extrair para um lugar comum).
+- Fazer as agregações em SQL (`func.count`, `func.avg`, `extract`), não em Python.
 
 Banco já pronto; subir API: `cd backend && venv\Scripts\activate && uvicorn app.main:app --reload`.

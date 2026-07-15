@@ -50,6 +50,15 @@ class IniciarVisitaRequest(BaseModel):
     longitude: float | None = None
 
 
+class FinalizarVisitaRequest(BaseModel):
+    """Geolocalização no momento do encerramento — evidência de que a
+    conferência e as assinaturas foram feitas no local. Opcional pelo mesmo
+    motivo do início."""
+
+    latitude: float | None = None
+    longitude: float | None = None
+
+
 class ChamadoRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

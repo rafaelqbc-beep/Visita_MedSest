@@ -24,6 +24,8 @@ from app.models.usuario import Usuario
 # Eventos registrados no log
 EVENTO_NOVO_CHAMADO = "NOVO_CHAMADO"
 EVENTO_REAGENDAMENTO = "REAGENDAMENTO"
+EVENTO_VISITA_LIBERADA = "VISITA_LIBERADA"
+EVENTO_RECIBO_CLIENTE = "RECIBO_CLIENTE"
 
 
 def _smtp_configurado() -> bool:
@@ -172,6 +174,98 @@ async def notificar_reagendamento(
         email_destinatario=gestor.email,
         tipo=CanalNotif.EMAIL,
         evento=EVENTO_REAGENDAMENTO,
+        sucesso=sucesso,
+        detalhes=detalhes,
+    )
+
+
+async def notificar_visita_liberada(chamado_id: uuid.UUID, db: AsyncSession) -> None:
+    """E-mail ao técnico interno: visita assinada, dados liberados para o PGR."""
+    chamado = await db.get(Chamado, chamado_id)
+    if chamado is None or chamado.tecnico_interno_id is None:
+        return
+
+    tecnico = await db.get(Usuario, chamado.tecnico_interno_id)
+    cliente = await db.get(Cliente, chamado.cliente_id)
+    if tecnico is None:
+        return
+
+    razao = cliente.razao_social if cliente else "cliente"
+    assunto = f"[MedSest] Visita liberada para elaboração do PGR — {razao}"
+    corpo = (
+        f"Olá, {tecnico.nome}.\n\n"
+        f"A visita abaixo foi conferida e assinada no local pelo cliente e pelo "
+        f"técnico. Os dados já estão liberados para você dar continuidade:\n"
+        f"  Chamado: #{chamado.numero_chamado}\n"
+        f"  Cliente: {razao}\n"
+        f"  Tipo: {chamado.tipo_visita.value}\n"
+        f"  Assinado por: {chamado.assinatura_cliente_nome or '-'}\n\n"
+        f"Acesse o MedSest Visita para visualizar e exportar o relatório."
+    )
+
+    sucesso, detalhes = await _enviar_email(tecnico.email, assunto, corpo)
+    _registrar(
+        db,
+        chamado_id=chamado.id,
+        usuario_id=tecnico.id,
+        email_destinatario=tecnico.email,
+        tipo=CanalNotif.EMAIL,
+        evento=EVENTO_VISITA_LIBERADA,
+        sucesso=sucesso,
+        detalhes=detalhes,
+    )
+
+
+async def notificar_recibo_cliente(chamado_id: uuid.UUID, db: AsyncSession) -> None:
+    """E-mail ao cliente: cópia do relatório assinado (recibo, sem pedir ação).
+
+    TODO(sessão da exportação): anexar o PDF do relatório assinado. Ainda não há
+    biblioteca de PDF no projeto (python-docx gera .docx, não PDF) — por ora o
+    e-mail seria só o corpo.
+    """
+    chamado = await db.get(Chamado, chamado_id)
+    if chamado is None:
+        return
+
+    cliente = await db.get(Cliente, chamado.cliente_id)
+    if cliente is None:
+        return
+
+    if not cliente.email_contato:
+        _registrar(
+            db,
+            chamado_id=chamado.id,
+            usuario_id=None,
+            email_destinatario=None,
+            tipo=CanalNotif.EMAIL,
+            evento=EVENTO_RECIBO_CLIENTE,
+            sucesso=False,
+            detalhes="Cliente não tem e-mail de contato cadastrado; recibo não enviado.",
+        )
+        return
+
+    data_visita = (
+        chamado.dt_fim_visita.strftime("%d/%m/%Y") if chamado.dt_fim_visita else "-"
+    )
+    assunto = f"[MedSest] Cópia do relatório de visita técnica — {cliente.razao_social}"
+    corpo = (
+        f"Olá, {cliente.nome_contato or cliente.razao_social}.\n\n"
+        f"Segue a cópia do relatório da visita técnica realizada em {data_visita}, "
+        f"conferido e assinado no local:\n"
+        f"  Chamado: #{chamado.numero_chamado}\n"
+        f"  Assinado por: {chamado.assinatura_cliente_nome or '-'}\n\n"
+        f"Este e-mail é apenas um comprovante — não é necessária nenhuma ação de sua parte.\n"
+        f"Em caso de dúvida, procure seu gestor comercial."
+    )
+
+    sucesso, detalhes = await _enviar_email(cliente.email_contato, assunto, corpo)
+    _registrar(
+        db,
+        chamado_id=chamado.id,
+        usuario_id=None,
+        email_destinatario=cliente.email_contato,
+        tipo=CanalNotif.EMAIL,
+        evento=EVENTO_RECIBO_CLIENTE,
         sucesso=sucesso,
         detalhes=detalhes,
     )

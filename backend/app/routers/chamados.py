@@ -2,29 +2,40 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import Select, or_, select
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.middleware.auth import get_current_user, require_roles
+from app.models.cargo import Cargo
 from app.models.chamado import Chamado
 from app.models.cliente import Cliente
 from app.models.enums import RoleEnum, StatusChamado, TipoVisitaEnum
+from app.models.setor import Setor
 from app.models.usuario import Usuario
 from app.schemas.chamado import (
     ChamadoCreate,
     ChamadoListItem,
     ChamadoRead,
     ChamadoUpdate,
+    FinalizarVisitaRequest,
     IniciarVisitaRequest,
     ReagendarRequest,
 )
 from app.schemas.common import Page, PageParams, paginate
-from app.services.notificacoes import notificar_novo_chamado, notificar_reagendamento
+from app.services.notificacoes import (
+    notificar_novo_chamado,
+    notificar_reagendamento,
+    notificar_recibo_cliente,
+    notificar_visita_liberada,
+)
 from app.services.round_robin import get_proximo_tecnico_interno
+from app.services.visita import get_chamado_editavel
 from app.utils.exceptions import AppException
+from app.utils.file_handler import remover_arquivo, salvar_imagem
+from app.utils.validators import formatar_cpf, validar_cpf
 
 router = APIRouter(prefix="/api/chamados", tags=["chamados"])
 
@@ -312,6 +323,145 @@ async def iniciar_visita(
     chamado.geoloc_longitude = body.longitude
 
     await db.flush()
+    await db.refresh(chamado)
+    return ChamadoRead.model_validate(chamado)
+
+
+@router.post("/{chamado_id}/assinatura-cliente", response_model=ChamadoRead)
+async def assinar_cliente(
+    chamado_id: uuid.UUID,
+    nome: str = Form(..., description="Nome de quem assinou"),
+    cpf: str = Form(..., description="CPF de quem assinou"),
+    file: UploadFile = File(..., description="Imagem do traço do canvas"),
+    db: AsyncSession = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+) -> ChamadoRead:
+    """Cliente assina no tablet ao conferir os dados no local.
+
+    Nome e CPF identificam quem assinou — sem o e-mail de validação, é isso que
+    dá rastreabilidade ao aceite.
+    """
+    chamado = await get_chamado_editavel(chamado_id, usuario, db)
+
+    if not validar_cpf(cpf):
+        raise AppException(status.HTTP_422_UNPROCESSABLE_ENTITY, "CPF inválido.", "CPF_INVALIDO")
+    if not nome.strip():
+        raise AppException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "Informe o nome de quem assinou.", "NOME_OBRIGATORIO"
+        )
+
+    caminho, _ = await salvar_imagem(file, subdir="assinaturas")
+
+    # Reassinatura (traço ruim, pessoa errada): o arquivo anterior é descartado.
+    anterior = chamado.assinatura_cliente_caminho
+    chamado.assinatura_cliente_caminho = caminho
+    chamado.assinatura_cliente_nome = nome.strip()
+    chamado.assinatura_cliente_cpf = formatar_cpf(cpf)
+    chamado.dt_assinatura_cliente = _agora()
+
+    try:
+        await db.flush()
+    except Exception:
+        remover_arquivo(caminho)
+        raise
+    if anterior and anterior != caminho:
+        remover_arquivo(anterior)
+
+    await db.refresh(chamado)
+    return ChamadoRead.model_validate(chamado)
+
+
+@router.post("/{chamado_id}/assinatura-tecnico", response_model=ChamadoRead)
+async def assinar_tecnico(
+    chamado_id: uuid.UUID,
+    file: UploadFile = File(..., description="Imagem do traço do canvas"),
+    db: AsyncSession = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+) -> ChamadoRead:
+    """Técnico externo assina. A identidade vem do usuário logado — basta o traço."""
+    chamado = await get_chamado_editavel(chamado_id, usuario, db)
+
+    caminho, _ = await salvar_imagem(file, subdir="assinaturas")
+
+    anterior = chamado.assinatura_tecnico_caminho
+    chamado.assinatura_tecnico_caminho = caminho
+    chamado.dt_assinatura_tecnico = _agora()
+
+    try:
+        await db.flush()
+    except Exception:
+        remover_arquivo(caminho)
+        raise
+    if anterior and anterior != caminho:
+        remover_arquivo(anterior)
+
+    await db.refresh(chamado)
+    return ChamadoRead.model_validate(chamado)
+
+
+@router.put("/{chamado_id}/finalizar", response_model=ChamadoRead)
+async def finalizar_visita(
+    chamado_id: uuid.UUID,
+    body: FinalizarVisitaRequest,
+    db: AsyncSession = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+) -> ChamadoRead:
+    """Encerra a visita e libera os dados para o técnico interno.
+
+    Exige conteúdo mínimo (1 setor com 1 cargo) e as duas assinaturas — é o
+    aceite do cliente que substitui o antigo fluxo de validação por e-mail.
+    """
+    chamado = await get_chamado_editavel(chamado_id, usuario, db)
+
+    qtd_setores = await db.scalar(
+        select(func.count()).select_from(Setor).where(Setor.chamado_id == chamado_id)
+    )
+    if not qtd_setores:
+        raise AppException(
+            status.HTTP_409_CONFLICT,
+            "Registre ao menos um setor antes de finalizar a visita.",
+            "SEM_SETORES",
+        )
+
+    qtd_cargos = await db.scalar(
+        select(func.count())
+        .select_from(Cargo)
+        .join(Setor, Cargo.setor_id == Setor.id)
+        .where(Setor.chamado_id == chamado_id)
+    )
+    if not qtd_cargos:
+        raise AppException(
+            status.HTTP_409_CONFLICT,
+            "Registre ao menos um cargo antes de finalizar a visita.",
+            "SEM_CARGOS",
+        )
+
+    if not chamado.assinatura_cliente_caminho:
+        raise AppException(
+            status.HTTP_409_CONFLICT,
+            "Falta a assinatura do cliente.",
+            "SEM_ASSINATURA_CLIENTE",
+        )
+    if not chamado.assinatura_tecnico_caminho:
+        raise AppException(
+            status.HTTP_409_CONFLICT,
+            "Falta a assinatura do técnico.",
+            "SEM_ASSINATURA_TECNICO",
+        )
+
+    agora = _agora()
+    chamado.status = StatusChamado.FINALIZADO
+    chamado.dt_fim_visita = agora
+    # Assinado no local: a liberação para o técnico interno é imediata.
+    chamado.dt_liberado_tecnico_interno = agora
+    chamado.geoloc_assinatura_latitude = body.latitude
+    chamado.geoloc_assinatura_longitude = body.longitude
+
+    await db.flush()
+
+    await notificar_visita_liberada(chamado.id, db)
+    await notificar_recibo_cliente(chamado.id, db)
+
     await db.refresh(chamado)
     return ChamadoRead.model_validate(chamado)
 
