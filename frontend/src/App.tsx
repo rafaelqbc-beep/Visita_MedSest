@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
 import { rotaInicial } from '@/lib/navegacao'
 import LoginPage from '@/pages/auth/LoginPage'
+import DashboardPage from '@/pages/dashboard/DashboardPage'
 import { EmBreve } from '@/pages/EmBreve'
 import { AuthProvider } from '@/store/AuthContext'
 
@@ -14,7 +15,6 @@ import { AuthProvider } from '@/store/AuthContext'
  * da sidebar — assim um item não some do menu e continua acessível pela URL.
  */
 const PAGINAS = [
-  { para: '/dashboard', titulo: 'Dashboard', sessao: '#12', roles: ['ADMIN', 'GESTOR_COMERCIAL', 'TECNICO_EXTERNO', 'TECNICO_INTERNO'] },
   { para: '/chamados', titulo: 'Chamados', sessao: '#13', roles: ['ADMIN', 'GESTOR_COMERCIAL'] },
   { para: '/visitas', titulo: 'Minhas visitas', sessao: '#14', roles: ['TECNICO_EXTERNO'] },
   { para: '/relatorios', titulo: 'Relatórios', sessao: '#16', roles: ['ADMIN', 'TECNICO_INTERNO'] },
@@ -56,6 +56,8 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/" element={<Inicio />} />
+              {/* Dashboard: todos os perfis; o backend recorta os números */}
+              <Route path="/dashboard" element={<DashboardPage />} />
               {PAGINAS.map(({ para, titulo, sessao, roles }) => (
                 <Route key={para} element={<ProtectedRoute roles={[...roles]} />}>
                   <Route path={para} element={<EmBreve titulo={titulo} sessao={sessao} />} />

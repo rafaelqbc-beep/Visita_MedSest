@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-15
-**Sessão atual:** #11
+**Sessão atual:** #12
 **Status:** Em desenvolvimento
 
 ---
@@ -66,7 +66,7 @@ rastreabilidade que o e-mail dava antes.
 - [x] Identidade visual: logo, símbolo vetorial, favicon e ícones do PWA
 - [x] Autenticação (login, contexto, interceptor de refresh, rotas protegidas)
 - [x] Layout (Sidebar com drawer, Header, rotas por role, indicador de conexão)
-- [ ] Dashboard
+- [x] Dashboard (KPIs, gráficos, filtros, pares em tabela)
 - [ ] Gestão de chamados (gestor)
 - [ ] Módulo de visita tablet + offline/IndexedDB
 - [ ] Tela de conferência + assinaturas no canvas (cliente e técnico)
@@ -82,13 +82,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #11 — layout concluído. Nada em aberto ao encerrar._
+_Sessão #12 — dashboard concluído. Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida:
-12. Frontend: dashboard (Recharts)
 13. Frontend: gestão de chamados (gestor)
 14. Frontend: módulo de visita tablet + offline/IndexedDB
 15. Frontend: tela de conferência + assinaturas no canvas
@@ -269,6 +268,24 @@ Ordem sugerida:
 - **Round-robin sob concorrência real, finalmente testado:** 6 chamados criados **em paralelo** (`asyncio.gather`) distribuíram **exatamente 2 para cada um dos 3 técnicos**, sem `numero_chamado` repetido. Isso é o `SELECT ... FOR UPDATE` da #5 provando seu valor — em sequência (como eu havia testado antes), qualquer implementação passaria. Também: 20 leituras simultâneas → todas 200.
 - **Lição para as próximas sessões:** rotação de refresh token + estado por aba é uma combinação traiçoeira. Já mordeu duas vezes (StrictMode na #10, multi-aba aqui). Qualquer novo fluxo que chame `/auth/refresh` deve passar por `renovarSessao()`.
 
+**Sessão #12 (2026-07-16) — Dashboard:**
+- Arquivos: `pages/dashboard/{DashboardPage,FiltrosDashboard}.tsx`, `components/charts/{CardGrafico,StatTile,Meter,TooltipGrafico}.tsx`, `lib/coresGrafico.ts`, `services/dashboardService.ts`, `hooks/useDashboard.ts`, `types/dashboard.ts`.
+- **A paleta foi VALIDADA por script** (skill `dataviz`), não escolhida no olho. O que isso revelou e que eu jamais veria:
+  - **O azul-marinho da marca `#1A3A5C` é inválido como preenchimento de gráfico**: fora da banda de luminosidade (L 0.34) e **abaixo do piso de croma (0.071) — num gráfico ele lê como cinza**. Os gráficos usam `#2E6DA4` (mesma família, luminosidade corrigida); o marinho segue na UI.
+  - **Âmbar + verde dão ΔE 2.7 sob protanopia** — praticamente a mesma cor para daltônicos, embora pareçam óbvios de distinguir. Descartado.
+  - Paleta final do tipo de visita: **azul da marca `#2E6DA4` + verde `#008300` + violeta `#4a3aa7`** — passa tudo sem warnings (pior par vizinho ΔE 20.7 CVD / 23.4 visão normal, todos ≥ 3:1).
+  - **⚠️ A ORDEM das séries é estrutural, não estética:** o verde precisa ficar ENTRE azul e violeta. Azul↔violeta sozinhos dão ΔE 13.4 (abaixo do piso 15) e só não quebram porque nunca se tocam numa pilha. Está comentado em `lib/coresGrafico.ts`.
+- **Cores de status:** reprovam o validador categórico (vermelho↔verde ΔE 4.2 deutan) — **e isso é esperado**: validei a paleta de status *do próprio guia* e ela reprova igual (ΔE 4.1). Status é semanticamente vermelho/verde, que é justo o que o daltonismo colapsa. A regra do status é outra: **nunca cor sozinha**. Por isso todo gráfico de status traz nome + valor ao lado da barra. Mantém a mesma língua do `StatusBadge`.
+- **🔀 TRÊS DIVERGÊNCIAS DO PROMPT ORIGINAL** (o guia de dataviz justifica cada uma):
+  1. **Status: barras, não donut.** Donut para valores próximos é anti-padrão, e status precisa de rótulo.
+  2. **Tipo de visita: barra empilhada, não pizza/donut.** É a forma padrão para parte-do-todo, lida melhor com nomes longos — e **permite a paleta sóbria**: num donut todos os segmentos se tocam (all-pairs), o que reprovaria o violeta e forçaria magenta rosa, fora do tom corporativo pedido.
+  3. **Conversão: meter, não tabela/pizza.** "Uma razão contra um limite → meter, nunca pizza de 2 fatias."
+- **Semântica dos filtros exposta na UI** (o backend já resolvia isso na #8, mas o número pareceria errado sem aviso): nota sob os KPIs dizendo que abertos/visitas-no-mês/a-vencer ignoram o período; o card de conversão avisa que é sempre sobre Novo Cliente; o volume avisa que é sempre a janela de 6 meses.
+- **Todo gráfico tem par em tabela** (botão Gráfico/Tabela no card) — é o equivalente acessível e a via de leitura para quem não distingue cores. `keepPreviousData` no React Query segura o render anterior a 60% em vez de piscar skeleton.
+- Outras regras aplicadas: barras ≤24px com ponta arredondada de 4px; 2px de superfície separando segmentos da pilha; grade hairline sólida recessiva; **texto nunca veste a cor da série** (a identidade vem do quadradinho ao lado); legenda sempre com 2+ séries; **uma hue só** para magnitude (tempo por técnico) — dar uma cor por técnico gastaria o canal de identidade recodificando o que o comprimento já mostra.
+- **🐛 BUG REAL que só a inspeção da tela pegou:** o tick padrão do Recharts **quebra rótulo longo em vários `<tspan>` sem espaço** — "Em andamento" virava o texto **`"Emandamento"` no DOM**, que é o que um leitor de tela leria (idem "Ana Tecnica Externa"). Corrigido na origem com um tick customizado de linha única (`TickCategoria`). Alargar o eixo não resolvia.
+- **Validado com E2E: 22/22** — números conferidos contra o seed (abertos=2, duração 2,0h, Novo Cliente 40%, conversão 50%), `role=meter` com `aria-valuenow=50`, **zero pizza/donut na página**, 5 cards com par em tabela, filtro de tipo derrubando o KPI mas **não** distorcendo a conversão, período futuro zerando as médias mas não os operacionais, e o escopo do técnico interno.
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
@@ -299,7 +316,16 @@ gestor abre chamado (round-robin atribui o tecnico interno)
 cargos · fotos · dashboard · exportação. Tudo com escopo por perfil e erros
 `{detail, code}`. Explorar em `/docs`.
 
-**Para a próxima sessão (#12) — dashboard:**
+**Para a próxima sessão (#13) — gestão de chamados (gestor):**
+- Lista de chamados consumindo `GET /api/chamados` (paginado; filtros: status, tipo_visita, cliente_id, tecnico_externo_id, tecnico_interno_id, unidade_id (só ADMIN), periodo_inicio/fim, search por nº ou razão social). O `ChamadoListItem` já traz `cliente_razao_social`, `cliente_cidade` e os nomes dos técnicos — não precisa buscar relação por relação.
+- Criar chamado (`POST`): cliente (autocomplete em `/api/clientes`), **tipo_visita obrigatório**, data proposta, técnico externo, recomendações. O técnico interno é atribuído sozinho por round-robin — não é campo de formulário.
+- Detalhe do chamado, editar (`PUT`), cancelar (`PUT /{id}/cancelar`).
+- ⚠️ **Chamado FINALIZADO/CANCELADO está travado**: o PUT só aceita trocar técnico; qualquer outro campo dá 409 `CHAMADO_TRAVADO`. A UI deve refletir isso (desabilitar os campos), não deixar o usuário descobrir pelo erro.
+- Reusar: `PageWrapper`, `StatusBadge`, `TipoVisitaBadge`, `Button`, `Input`, `FormField`, `CardGrafico`/`TabelaDados` (se servir), React Query.
+- Usar as mensagens de erro da API (`mensagemDeErro`/`codigoDeErro` de `services/api.ts`) — elas já vêm em português no `detail`.
+- Login de teste: `gestor@medsest.com.br` / `Senha@123` (é o perfil dono desta tela).
+
+**Referência da sessão #12 (dashboard) — já concluída:**
 - Consumir `GET /api/dashboard?unidade_id=&periodo_inicio=&periodo_fim=&tipo_visita=` (7 seções: `kpis`, `por_tipo_visita`, `conversao_novos_clientes`, `chamados_por_status`, `volume_por_mes`, `tempo_medio_por_tecnico`, `carga_tecnicos_internos`). Ver `backend/app/schemas/dashboard.py` para o contrato exato.
 - **Usar React Query** (`@tanstack/react-query` já está no `package.json` e o `QueryClientProvider` já está no `main.tsx`) — criar `services/dashboardService.ts` + um hook.
 - **Gráficos com Recharts** (já instalado): donut de status, barras empilhadas por tipo (volume mensal), barra horizontal (tempo por técnico), pizza/donut da distribuição por tipo.
