@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-15
-**Sessão atual:** #9
+**Sessão atual:** #10
 **Status:** Em desenvolvimento
 
 ---
@@ -64,7 +64,7 @@ rastreabilidade que o e-mail dava antes.
 ### Frontend
 - [x] Design system + componentes base (tokens + Tailwind config)
 - [x] Identidade visual: logo, símbolo vetorial, favicon e ícones do PWA
-- [ ] Autenticação (login, contexto, interceptors)
+- [x] Autenticação (login, contexto, interceptor de refresh, rotas protegidas)
 - [ ] Layout (Sidebar, Header, rotas por role)
 - [ ] Dashboard
 - [ ] Gestão de chamados (gestor)
@@ -82,13 +82,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #9 — exportação Word + PDF concluída. **BACKEND COMPLETO.** Nada em aberto ao encerrar._
+_Sessão #10 — autenticação do frontend concluída. Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
-**Começa o frontend.** Ordem sugerida:
-10. Frontend: autenticação (login, contexto, interceptor de refresh)
+Ordem sugerida:
 11. Frontend: layout (Sidebar, Header, rotas por role)
 12. Frontend: dashboard (Recharts)
 13. Frontend: gestão de chamados (gestor)
@@ -236,6 +235,20 @@ _Sessão #9 — exportação Word + PDF concluída. **BACKEND COMPLETO.** Nada e
 - **Sobre a sidebar (azul-marinho):** o "Med" do logo é azul-marinho e sumiria no fundo escuro. Não existe versão clara do logo. Solução: usar **o símbolo (que tem contorno branco próprio) + "MedSest Visita" como texto branco em HTML**. Fica nítido e não depende de arte que não temos.
 - **Ferramentas:** `@resvg/resvg-js` (Node) para rasterizar o SVG — `cairosvg` falhou no Windows por falta da DLL do cairo, o mesmo tipo de dependência de sistema que fez a gente descartar o `weasyprint`. O resvg ficou só em `%TEMP%`, fora do projeto.
 
+**Sessão #10 (2026-07-16) — Autenticação do frontend:**
+- **Arquivos:** `services/api.ts` (axios + interceptor), `services/authService.ts`, `store/AuthContext.tsx`, `hooks/useAuth.ts`, `components/ProtectedRoute.tsx`, `components/ui/{Button,Input,FormField}.tsx`, `pages/auth/LoginPage.tsx`.
+- **access_token só em memória** (`api.ts`), nunca em localStorage — lá ficaria exposto a XSS. Consequência: some no F5, e a sessão é retomada pelo cookie de refresh (`restaurarSessao`). Verificado no teste: `localStorage` e `sessionStorage` ficam vazios.
+- **Fila de refresh:** só existe um `/auth/refresh` em andamento por vez (promise compartilhada). Sem isso, N requisições que tomam 401 juntas disparam N refreshes, e a **rotação do backend** invalida todos menos o primeiro. **Comprovado:** 5 chamadas concorrentes com token expirado → `[200,200,200,200,200]` e **exatamente 1 refresh** na rede.
+- `renovarToken()` usa `axios` puro, não a instância `api` — senão o interceptor reagiria ao 401 do próprio refresh e entraria em recursão.
+
+**🐛 DOIS BUGS REAIS que só o teste no navegador pegou** (build e tipos passavam):
+  1. **O F5 derrubava a sessão.** Causa: o **StrictMode do React monta o AuthProvider duas vezes em dev**, disparando dois `/auth/refresh` simultâneos; a rotação do backend fazia o segundo invalidar o primeiro. Corrigido com a mesma deduplicação por promise compartilhada em `restaurarSessao`. **Lição:** com rotação de refresh token, qualquer chamada duplicada é fatal — e o StrictMode duplica de propósito.
+  2. **`/auth/me` não se recuperava de token expirado.** Eu excluíra `/auth/*` inteiro da retentativa (a intenção era não retentar login/refresh), mas o `/me` é rota autenticada normal. Trocado por uma lista explícita: `SEM_RETENTATIVA = ['/auth/login', '/auth/refresh', '/auth/logout']`.
+
+- **Validado com E2E real (Playwright dirigindo Chromium): 26/26 checagens** — redirecionamento de rota protegida, validação do formulário (Zod), toggle de senha, erro de credencial vindo do `detail` da API, login, **cookie httpOnly invisível ao JS**, F5 mantendo a sessão, refresh concorrente, logout limpando o cookie, e console sem erros. **Também inspecionei as telas** (login, erro, área logada) — confirmam o símbolo nítido sobre a barra azul-marinho e o verde da marca no badge.
+- **Como testar frontend aqui:** `npx playwright` num diretório temporário (`%TEMP%`), fora do projeto. Para exercitar o interceptor de dentro do navegador: `await import('/src/services/api.ts')` no `page.evaluate` — `fetch()` puro não passa pelo axios nem manda o `Authorization`, e não testa nada.
+- **Erros de teste que me custaram tempo (para não repetir):** `getByText('ADMIN')` casa com "admin@..." e "Administrador" → usar `{ exact: true }`; e imprimir `r.text` de resposta binária quebra o console cp1252.
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
@@ -266,15 +279,15 @@ gestor abre chamado (round-robin atribui o tecnico interno)
 cargos · fotos · dashboard · exportação. Tudo com escopo por perfil e erros
 `{detail, code}`. Explorar em `/docs`.
 
-**Para a próxima sessão (#10) — começa o frontend:** implementar a **autenticação**:
-- `services/api.ts` — Axios com `baseURL` do `VITE_API_BASE_URL` e `withCredentials: true` (o refresh token vem em cookie httpOnly).
-- **Interceptor de 401** que chama `POST /api/auth/refresh` e refaz a requisição. Cuidados: não tentar refresh na própria rota de refresh (loop infinito), e **enfileirar as requisições concorrentes** enquanto um refresh está em andamento — senão 5 requisições que tomam 401 juntas disparam 5 refreshes, e a rotação de token invalida os outros 4.
-- `authService.ts` + contexto/store de auth. **access_token em memória** (não em localStorage).
-- Tela de login conforme o design system: **logo `/logo_medsest.png` centralizado**, card branco, e-mail, senha com toggle, botão "Entrar". React Hook Form + Zod.
-- Assets prontos em `frontend/public/`: `logo_medsest.png` (logo completo, fundo claro), `simbolo-medsest.svg` (símbolo vetorial — usar na sidebar escura, junto de "MedSest Visita" em texto branco).
-- Rotas protegidas por role (o layout vem na #11).
-- Login de teste: `admin@medsest.com.br` / `Admin@123`.
-- O Vite já faz proxy de `/api` para `localhost:8000` (ver `vite.config.ts`) — subir os dois juntos.
+**Para a próxima sessão (#11) — layout:**
+- **Sidebar** (240px no desktop, drawer no tablet): fundo `#1A3A5C`, `simbolo-medsest.svg` + "MedSest Visita" em texto branco no topo (**já validado na Home placeholder do App.tsx** — reaproveitar). Itens de menu **filtrados por role**, usando `temRole()` do `useAuth`:
+  - ADMIN: tudo · GESTOR_COMERCIAL: dashboard, chamados, clientes · TECNICO_EXTERNO: minhas visitas · TECNICO_INTERNO: relatórios
+- **Header:** nome/perfil do usuário, botão sair, e o **indicador de status de conexão** (Online / "Offline — dados salvos localmente"), que a #14 vai usar.
+- `components/layout/{Sidebar,Header,PageWrapper}.tsx` + uma rota-mãe com `<Outlet />` dentro do `ProtectedRoute`.
+- **Substituir a Home placeholder** do `App.tsx` pelo layout de verdade.
+- Já existe: `ProtectedRoute` (aceita `roles=[...]`), `useAuth` (com `temRole`), `Button`/`Input`/`FormField`, e a rota `/sem-permissao`.
+- Login de teste: `admin@medsest.com.br` / `Admin@123` (demais: `Senha@123`).
+- Subir os dois: `uvicorn app.main:app` + `npm run dev` (o Vite faz proxy de `/api`).
 
 **Pendências que dependem do usuário:**
 - **Credenciais de SMTP e Twilio** — ele avisou (15/07) que está providenciando. Quando chegarem: preencher o `.env` e implementar `_enviar_email`/`_enviar_whatsapp` em `services/notificacoes.py` (os TODOs estão nos lugares certos, e `_enviar_email` já aceita `anexos`). **Nenhum call site muda**; os 4 eventos passam a registrar ENVIADO em vez de FALHOU.
