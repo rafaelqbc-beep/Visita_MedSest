@@ -49,8 +49,8 @@ export default function ChamadoDetalhePage() {
   const { data: chamado, isLoading, isError } = useChamado(id)
   const atualizar = useAtualizarChamado(id)
   const cancelar = useCancelarChamado(id)
-  const { data: externos = [] } = useTecnicosExternos()
-  const { data: internos = [] } = useTecnicosInternos()
+  const { data: externos = [], isSuccess: externosProntos } = useTecnicosExternos()
+  const { data: internos = [], isSuccess: internosProntos } = useTecnicosInternos()
 
   const [erroApi, setErroApi] = useState<string | null>(null)
   const [salvo, setSalvo] = useState(false)
@@ -58,8 +58,20 @@ export default function ChamadoDetalhePage() {
 
   const { register, handleSubmit, reset, formState: { isDirty } } = useForm<FormEditar>()
 
+  /**
+   * Só preenche o formulário depois que as listas de técnicos chegarem.
+   *
+   * Os `<select>` são não-controlados: o valor é escrito no DOM. Se o `reset`
+   * rodar antes de os `<option>` existirem, o navegador não acha a opção e cai
+   * na primeira ("Sem técnico") — a tela mostraria o chamado sem técnico, e o
+   * próximo "Salvar" mandaria `tecnico_interno_id: null`, apagando a atribuição
+   * do round-robin. As queries têm cache de 5min, então normalmente já chegaram;
+   * quem paga o preço é o primeiro acesso, justo o do link vindo do e-mail.
+   */
+  const opcoesProntas = externosProntos && internosProntos
+
   useEffect(() => {
-    if (!chamado) return
+    if (!chamado || !opcoesProntas) return
     reset({
       tipo_visita: chamado.tipo_visita,
       tecnico_externo_id: chamado.tecnico_externo_id ?? '',
@@ -67,7 +79,7 @@ export default function ChamadoDetalhePage() {
       data_proposta: chamado.data_proposta ?? '',
       recomendacoes: chamado.recomendacoes ?? '',
     })
-  }, [chamado, reset])
+  }, [chamado, opcoesProntas, reset])
 
   if (isLoading) {
     return (

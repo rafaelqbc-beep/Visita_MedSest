@@ -1,9 +1,9 @@
 # MedSest Visita — Progresso do Desenvolvimento
 
 ## Status Geral
-**Última atualização:** 2026-07-15
-**Sessão atual:** #15
-**Status:** Em desenvolvimento
+**Última atualização:** 2026-07-16
+**Sessão atual:** #16
+**Status:** 🎉 **CICLO COMPLETO FUNCIONANDO** — dá para testar o sistema inteiro no navegador
 
 ---
 
@@ -71,7 +71,7 @@ rastreabilidade que o e-mail dava antes.
 - [x] Módulo de visita no tablet: lista, iniciar, setores, cargos, fotos (**online**)
 - [ ] Offline/IndexedDB + sincronização (separado da #14 — ver notas)
 - [x] Tela de conferência + assinaturas no canvas (cliente e técnico) + finalizar
-- [ ] Módulo de relatório (técnico interno)
+- [x] Módulo de relatório (técnico interno): lista, detalhe, exportar Word, recibo PDF
 - [ ] Cadastros admin
 - [ ] PWA (service worker, manifest) — configurado, **ícones prontos**; faltam as telas
 
@@ -83,15 +83,18 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #15 — conferência + assinaturas + finalizar concluídas. **O fluxo de campo está completo.** Nada em aberto ao encerrar._
+_Sessão #16 — módulo de relatório concluído. **O ciclo fecha de ponta a ponta.** Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida:
-16. Frontend: módulo de relatório (técnico interno) — **a última peça do ciclo**
 
-> 🎯 **Depois da #16 o ciclo fecha de ponta a ponta** e dá para testar o sistema inteiro no navegador: abrir chamado → visita → assinar → exportar Word. É o momento de validar com a operação antes de investir no resto.
+> 🎯 **O ciclo está fechado (#16).** Testado de ponta a ponta no navegador: gestor abre
+> o chamado → round-robin atribui o técnico interno → técnico externo faz a visita no
+> tablet (setor, cargo, foto) → cliente e técnico assinam → finaliza → o relatório cai
+> na fila do técnico interno certo → ele baixa o .docx (54 KB, com as fotos e as
+> assinaturas dentro). **É o momento de validar com a operação antes de investir no resto.**
 
 17. Frontend: cadastros admin (clientes, usuários, unidades)
 18. **Offline/IndexedDB + sincronização** (tirado da #14 — ver notas da sessão)
@@ -104,6 +107,21 @@ Ordem sugerida:
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #16:**
+- **`<select>` não-controlado + opções de outra query = valor perdido.** Ver o bug #1
+  do marco da #16. Vale para qualquer form novo (#17 é só form!). O padrão certo:
+  `reset()` só depois do `isSuccess` das queries que enchem os `<option>`.
+- **`.value` de enum não é texto para humano.** `ROTULO_TIPO_VISITA` em
+  `models/enums.py` é a fonte única; se entrar tipo novo no enum, o rótulo entra
+  junto (há um teste que confere que todo membro tem rótulo — sem ele, `KeyError`
+  derruba a exportação).
+- **Resetar o banco com o uvicorn de pé quebra a primeira request** —
+  `InvalidCachedStatementError` do asyncpg (plano em cache vs. schema novo). HTTP 500
+  na 1ª, normal da 2ª em diante; parece "teste instável" e não é. **Reiniciar o
+  uvicorn depois das migrations.** Também está no CLAUDE.md.
+  ⚠️ **Isso vale para o deploy (#20):** migration em servidor no ar derruba a
+  primeira request de cada conexão do pool → reiniciar a app depois de migrar.
 
 **Sessão #1:**
 - **Python 3.12.4** instalado na máquina de dev (prompt pedia 3.11+). Compatível.
@@ -378,14 +396,59 @@ gestor abre chamado (round-robin atribui o tecnico interno)
 cargos · fotos · dashboard · exportação. Tudo com escopo por perfil e erros
 `{detail, code}`. Explorar em `/docs`.
 
-**Para a próxima sessão (#16) — módulo do técnico interno: A ÚLTIMA PEÇA DO CICLO.**
-- `/relatorios` (hoje um `EmBreve`): lista dos chamados atribuídos ao técnico interno. **O escopo do backend já só entrega FINALIZADOS** para esse perfil — não precisa filtrar por status.
-- **Detalhe/visualização**: todos os dados da visita (setores, cargos, fotos, assinaturas com nome/CPF/geoloc). Reusar o layout da `ConferenciaPage`, que já mostra tudo — mas **somente leitura**.
-- **Exportar Word**: `GET /api/chamados/{id}/exportar-word`. ⚠️ Retorna **binário** (`Content-Disposition` com `filename*`), não JSON — usar `responseType: 'blob'` no axios e disparar o download com `URL.createObjectURL`. **Só TECNICO_INTERNO atribuído + ADMIN** (403 para os outros).
-- **`dt_exportacao_word` só é gravado no primeiro download** — a UI pode mostrar "Exportado em ..." e destacar os que ainda não foram (é o KPI de carga do dashboard).
-- Útil: `GET /api/chamados/{id}/recibo-pdf` (o comprovante do cliente) também existe, com a regra de visibilidade normal.
-- Login: `interno.a@medsest.com.br` / `Senha@123` (tem o chamado #3 do seed). Testar também com `interno.c@` (tem o #4, já exportado).
-- Depois desta sessão: **o ciclo fecha** — dá para testar o sistema inteiro no navegador.
+## 🎉 MARCO: O CICLO FECHOU (sessão #16)
+
+O módulo do técnico interno entrou e **o sistema roda inteiro no navegador**. Testado
+de ponta a ponta, sem atalho: gestor abre o chamado → round-robin atribui → técnico
+externo faz a visita no tablet → cliente e técnico assinam → finaliza → o relatório
+aparece **só** para o técnico interno atribuído → ele baixa o `.docx` de 54 KB, e o
+arquivo abre com os setores, os cargos, as 2 assinaturas e a foto dentro.
+
+**O que entrou:**
+- `services/relatorioService.ts` — download em blob, nome do arquivo lido do
+  `Content-Disposition` (RFC 5987, com acento), e `comErroLegivel()`.
+- `pages/relatorios/RelatoriosPage.tsx` — fila do técnico; o não exportado ganha
+  destaque e o contador "N relatórios aguardam exportação".
+- `pages/relatorios/RelatorioDetalhePage.tsx` — leitura, com assinaturas e geoloc.
+- Rotas em `App.tsx` sob `roles={['ADMIN', 'TECNICO_INTERNO']}`.
+
+**Bugs reais achados pelo teste (não eram do módulo novo):**
+1. 🐞 **`ChamadoDetalhePage` apagava o técnico do chamado.** Os `<select>` são
+   não-controlados e o `reset()` rodava quando o **chamado** chegava, mas os
+   `<option>` vêm de **outra** query (`useTecnicosInternos`). Chegando depois, o
+   navegador não achava a opção e caía na primeira: **"Sem técnico"**. O gestor
+   editava as recomendações, salvava, e o form mandava `tecnico_interno_id: null`
+   — **apagando a atribuição do round-robin em silêncio**, e o relatório sumia da
+   fila do técnico. Corrigido: só dá `reset()` depois que as listas chegam
+   (`isSuccess` das duas queries).
+2. 🐞 **"Visita Tecnica" sem acento no Word e no PDF** — os dois documentos que vão
+   para o cliente. A causa era `tipo_visita.value.replace('_',' ').title()`: o
+   `.value` é identificador de banco, não português. Criado
+   `ROTULO_TIPO_VISITA` em `models/enums.py` (fonte única) e usado no Word, no PDF
+   e nos e-mails, que mandavam `Tipo: VISITA_TECNICA` cru.
+
+**Lição:** a asserção `internoAtribuido.length > 0` passou feliz em cima do
+placeholder "Sem técnico" e escondeu o bug #1. Asserção fraca é teste que mente —
+foi trocada por um regex do nome real.
+
+**Verificado de verdade, não por screenshot:** o `.docx` foi aberto com `python-docx`
+e o PDF teve os streams descomprimidos, conferindo texto, acentos e imagens. As 2
+assinaturas viram 1 arquivo em `word/media/` porque o teste desenhou o mesmo rabisco
+nos dois canvas e o python-docx deduplica bytes idênticos — 3 `inline_shapes`, tudo
+certo.
+
+**Para a próxima sessão (#17) — cadastros admin (clientes, usuários, unidades).**
+- É CRUD, sem o suspense das anteriores: a API já existe (`/api/clientes`,
+  `/api/usuarios`, `/api/unidades`) com escopo por perfil e `{detail, code}`.
+- As três telas hoje são `EmBreve` no array `PAGINAS` do `App.tsx` — tirar de lá e
+  ligar as rotas, como foi feito com `/relatorios`.
+- Permissões (já em `lib/navegacao.ts`): clientes = ADMIN + GESTOR_COMERCIAL;
+  usuários e unidades = só ADMIN.
+- **Antes de codar**, considerar validar o ciclo com a operação: o sistema está
+  testável de ponta a ponta e feedback agora vale mais que tela nova.
+- ⚠️ **Cuidado com a armadilha do bug #1 desta sessão:** todo form de edição com
+  `<select>` populado por outra query tem esse risco. O padrão certo está em
+  `ChamadoDetalhePage` — `reset()` só depois que as opções chegam.
 
 **Referência da sessão #15 (conferência/assinaturas) — já concluída:**
 - Na `ExecucaoVisitaPage` o botão **"Conferir e assinar"** já existe e já respeita a regra (só habilita com ≥1 setor e ≥1 cargo) — falta ligá-lo a esta tela.

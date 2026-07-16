@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models.chamado import Chamado
+from app.models.enums import ROTULO_TIPO_VISITA
 from app.models.setor import Setor
 from app.utils.formatacao import coord_br, data_br, dt_br
 
@@ -83,7 +84,7 @@ async def gerar_relatorio_word(chamado_id: uuid.UUID, db: AsyncSession) -> tuple
     sub = doc.add_paragraph()
     sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
     sub_run = sub.add_run(
-        f"Chamado #{chamado.numero_chamado}  |  {chamado.tipo_visita.value.replace('_', ' ').title()}"
+        f"Chamado #{chamado.numero_chamado}  |  {ROTULO_TIPO_VISITA[chamado.tipo_visita]}"
     )
     sub_run.font.size = Pt(11)
 

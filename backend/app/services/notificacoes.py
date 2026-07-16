@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.chamado import Chamado
 from app.models.cliente import Cliente
-from app.models.enums import CanalNotif, StatusNotif
+from app.models.enums import ROTULO_TIPO_VISITA, CanalNotif, StatusNotif
 from app.models.notificacao import NotificacaoLog
 from app.models.usuario import Usuario
 
@@ -111,7 +111,7 @@ async def notificar_novo_chamado(chamado_id: uuid.UUID, db: AsyncSession) -> Non
         f"Uma nova visita foi atribuída a você:\n"
         f"  Chamado: #{chamado.numero_chamado}\n"
         f"  Cliente: {razao}\n"
-        f"  Tipo: {chamado.tipo_visita.value}\n"
+        f"  Tipo: {ROTULO_TIPO_VISITA[chamado.tipo_visita]}\n"
         f"  Data proposta: {data}\n\n"
         f"Acesse o MedSest Visita para ver os detalhes."
     )
@@ -209,7 +209,7 @@ async def notificar_visita_liberada(chamado_id: uuid.UUID, db: AsyncSession) -> 
         f"técnico. Os dados já estão liberados para você dar continuidade:\n"
         f"  Chamado: #{chamado.numero_chamado}\n"
         f"  Cliente: {razao}\n"
-        f"  Tipo: {chamado.tipo_visita.value}\n"
+        f"  Tipo: {ROTULO_TIPO_VISITA[chamado.tipo_visita]}\n"
         f"  Assinado por: {chamado.assinatura_cliente_nome or '-'}\n\n"
         f"Acesse o MedSest Visita para visualizar e exportar o relatório."
     )

@@ -15,6 +15,18 @@ class TipoVisitaEnum(str, enum.Enum):
     VISITA_TECNICA = "VISITA_TECNICA"
 
 
+#: Como cada tipo de visita é escrito para humanos.
+#:
+#: O `.value` é identificador de banco, não português: derivá-lo com
+#: `.replace("_", " ").title()` gera "Visita Tecnica" e "Renovacao" — sem acento,
+#: justo nos documentos que vão para o cliente.
+ROTULO_TIPO_VISITA: dict["TipoVisitaEnum", str] = {
+    TipoVisitaEnum.NOVO_CLIENTE: "Novo Cliente",
+    TipoVisitaEnum.RENOVACAO: "Renovação",
+    TipoVisitaEnum.VISITA_TECNICA: "Visita Técnica",
+}
+
+
 class StatusChamado(str, enum.Enum):
     """Fluxo: a conferência e as assinaturas acontecem no local, ao fim da visita.
 

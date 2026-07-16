@@ -86,6 +86,15 @@ npm run dev                    # http://localhost:5173
   `fastapi` no editor são falsos. Selecionar o interpretador `backend/venv`.
 - **Seed insere via model, sem passar pelo Pydantic:** CNPJ/CPF inválidos passam
   no seed mas quebram na API depois. Manter os dados do seed válidos.
+- **Resetar o banco com o uvicorn de pé quebra a PRIMEIRA request:** o asyncpg
+  guarda o plano das queries por conexão; `alembic downgrade/upgrade` troca o
+  schema e o plano em cache vira lixo →
+  `InvalidCachedStatementError: cached statement plan is invalid due to a
+  database schema change` (HTTP 500). A conexão ruim é descartada e da segunda
+  request em diante volta ao normal — por isso parece "teste instável".
+  **Sempre reiniciar o uvicorn depois de mexer nas migrations.**
+  Vale para produção também: migration em servidor no ar derruba a primeira
+  request de cada conexão do pool → tratar no deploy (ver #20 no PROGRESS).
 
 ---
 

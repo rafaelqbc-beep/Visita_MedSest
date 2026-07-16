@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models.chamado import Chamado
+from app.models.enums import ROTULO_TIPO_VISITA
 from app.models.setor import Setor
 from app.utils.formatacao import coord_br, dt_br, texto_latin1
 
@@ -122,7 +123,7 @@ async def gerar_recibo_pdf(chamado_id: uuid.UUID, db: AsyncSession) -> tuple[byt
     pdf.campo("Empresa", cliente.razao_social)
     if cliente.cnpj:
         pdf.campo("CNPJ", cliente.cnpj)
-    pdf.campo("Tipo de visita", chamado.tipo_visita.value.replace("_", " ").title())
+    pdf.campo("Tipo de visita", ROTULO_TIPO_VISITA[chamado.tipo_visita])
     pdf.campo("Unidade MedSest", chamado.unidade_medsest.nome if chamado.unidade_medsest else "-")
     pdf.campo("Técnico responsável", chamado.tecnico_externo.nome if chamado.tecnico_externo else "-")
     pdf.campo("Início da visita", dt_br(chamado.dt_inicio_visita))
