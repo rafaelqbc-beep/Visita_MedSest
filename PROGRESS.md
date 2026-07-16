@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-15
-**Sessão atual:** #13
+**Sessão atual:** #14
 **Status:** Em desenvolvimento
 
 ---
@@ -68,7 +68,8 @@ rastreabilidade que o e-mail dava antes.
 - [x] Layout (Sidebar com drawer, Header, rotas por role, indicador de conexão)
 - [x] Dashboard (KPIs, gráficos, filtros, pares em tabela)
 - [x] Gestão de chamados (lista, novo, detalhe/editar, cancelar)
-- [ ] Módulo de visita tablet + offline/IndexedDB
+- [x] Módulo de visita no tablet: lista, iniciar, setores, cargos, fotos (**online**)
+- [ ] Offline/IndexedDB + sincronização (separado da #14 — ver notas)
 - [ ] Tela de conferência + assinaturas no canvas (cliente e técnico)
 - [ ] Módulo de relatório (técnico interno)
 - [ ] Cadastros admin
@@ -82,20 +83,21 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #13b — regras de cancelamento/anulação concluídas. Nada em aberto ao encerrar._
-
----
+_Sessão #14 — execução da visita (online) concluída. Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida:
-14. Frontend: módulo de visita tablet + offline/IndexedDB
 15. Frontend: tela de conferência + assinaturas no canvas
 16. Frontend: módulo de relatório (técnico interno)
-17. Frontend: cadastros admin
-18. PWA (ícones, service worker, telas)
-19. DEPLOY.md
+
+> 🎯 **Depois da #16 o ciclo fecha de ponta a ponta** e dá para testar o sistema inteiro no navegador: abrir chamado → visita → assinar → exportar Word. É o momento de validar com a operação antes de investir no resto.
+
+17. Frontend: cadastros admin (clientes, usuários, unidades)
+18. **Offline/IndexedDB + sincronização** (tirado da #14 — ver notas da sessão)
+19. PWA (service worker, instalar no tablet)
+20. DEPLOY.md + subir no VPS
 
 **Pendente sem sessão definida (depende de terceiros):**
 - Envio real de e-mail/WhatsApp — aguardando credenciais SMTP/Twilio (o usuário avisou em 15/07 que está providenciando).
@@ -314,6 +316,23 @@ Ordem sugerida:
 - **Validado:** 19/19 no backend (regras por perfil e status) e 19/19 no E2E (gestor sem o botão, admin bloqueado sem motivo, motivo aparecendo no detalhe).
 - **Nota de manutenção:** os testes **cancelam chamados do seed**, então o banco precisa de reset entre execuções — `alembic downgrade base && alembic upgrade head && python seed.py`. As 3 migrations rodam do zero sem erro (verificado).
 
+**Sessão #14 (2026-07-16) — Execução da visita no tablet (online):**
+- **ESCOPO DIVIDIDO:** a #14 original previa execução + offline. Ficou só a **execução online**; o **offline virou a #18**. Fazer os dois de uma vez significaria entregar os dois mal. A camada de service (`visitaService.ts`) está isolada o suficiente para o offline entrar depois.
+- Arquivos: `pages/visitas/{VisitasPage,ExecucaoVisitaPage,CargosSetor,FotosSetor}.tsx`, `services/visitaService.ts`, `hooks/{useVisita,useGeolocalizacao}.ts`, `types/visita.ts`.
+- **`useGeolocalizacao` NUNCA rejeita.** Permissão negada, galpão sem GPS ou aparelho lento viram `{null, null}` — a visita começa mesmo assim (o backend aceita geoloc nula de propósito). Timeout de 8s: o técnico está com o cliente esperando. **Testado com a permissão negada de verdade** no Playwright.
+- **Uma query monta a tela toda:** `GET /setores?chamado_id=` traz cargos e fotos aninhados, e **todas** as mutações invalidam essa mesma query (`useMutacaoDaVisita`). Evita sincronizar cache campo a campo.
+- Tablet-first verificado no viewport de iPad: alvos de 44px, texto ≥16px, cards grandes, botão de remover foto **sempre visível** (no tablet não existe hover).
+- `capture="environment"` no input de foto: abre a câmera traseira direto, em vez do seletor de arquivos. O input é limpo após cada escolha — sem isso, escolher a mesma foto de novo não dispara o `change` e o técnico acha que travou.
+- O formulário de cargo **limpa e continua aberto** após salvar: o técnico cadastra vários seguidos. O setor recém-criado **abre sozinho**, porque o próximo passo é cadastrar os cargos dele.
+- O botão "Conferir e assinar" (leva à #15) já respeita a regra do backend: só habilita com ≥1 setor e ≥1 cargo, e diz o que falta.
+
+**🐛 DOIS BUGS REAIS encontrados pelo teste:**
+1. **`PUT /chamados/{id}/iniciar` devolvia `ChamadoRead`** — a MESMA mentira de tipo da #13b, num endpoint que passou batido. Sintoma: o nome do cliente sumia do cabeçalho após iniciar a visita. **Corrigido de vez: TODOS os endpoints de chamado (`POST`, `PUT`, `iniciar`, `cancelar`, `finalizar`, `reagendar`, assinaturas) agora devolvem `ChamadoListItem`.** `ChamadoRead` sobrou só como classe-base. **Se algum endpoint novo de chamado for criado, ele deve devolver `ChamadoListItem`.**
+2. **Foto corrompida virava HTTP 500.** O Pillow lança `SyntaxError` para PNG com CRC quebrado, e o `except` de `file_handler.py` só pegava `(UnidentifiedImageError, OSError, ValueError)`. **Isso importa em campo:** foto truncada acontece (upload cortado no 3G, falha da câmera), e o técnico via "erro de servidor" em vez do aviso. Trocado por `except Exception` — aqui se faz parse de bytes de fora, e qualquer falha significa "imagem inválida", não defeito nosso. **Os testes da #6 não pegaram porque usavam PNG válido ou lixo total; nunca um arquivo *quase* válido.** Agora 422 `ARQUIVO_INVALIDO`.
+
+- **Validado com E2E no iPad: 33/33** — inclui iniciar com geolocalização **negada**, criar setor/cargo/foto, foto corrompida virando aviso, cascata ao remover setor, Esc não removendo, e F5 mantendo tudo.
+- **Nota de manutenção:** `alembic downgrade base` derruba as tabelas mas **não apaga os arquivos de `uploads/`** — depois de um reset, sobram fotos órfãs em disco. Limpar `uploads/fotos/` na mão (as 4 assinaturas do seed são recriadas pelo `seed.py`).
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
@@ -344,7 +363,19 @@ gestor abre chamado (round-robin atribui o tecnico interno)
 cargos · fotos · dashboard · exportação. Tudo com escopo por perfil e erros
 `{detail, code}`. Explorar em `/docs`.
 
-**Para a próxima sessão (#14) — módulo de visita no tablet + offline:** a sessão mais complexa do frontend.
+**Para a próxima sessão (#15) — conferência + assinaturas no canvas:** o fecho do fluxo de campo.
+- Na `ExecucaoVisitaPage` o botão **"Conferir e assinar"** já existe e já respeita a regra (só habilita com ≥1 setor e ≥1 cargo) — falta ligá-lo a esta tela.
+- **Tela de conferência**: mostra tudo que foi registrado para o técnico revisar **junto ao cliente**, com atalho para voltar e corrigir.
+- **Assinatura em canvas** (dedo/caneta): `<canvas>` com eventos de ponteiro; exportar com `canvas.toBlob()` → `File` → multipart.
+  - **Cliente**: `POST /api/chamados/{id}/assinatura-cliente` (multipart: `file`, `nome`, `cpf`). O CPF é validado no backend (422 `CPF_INVALIDO`); **validar também no cliente** com `utils/validators` equivalente, para o erro não vir só do servidor.
+  - **Técnico**: `POST /api/chamados/{id}/assinatura-tecnico` (só `file`).
+  - **Reassinatura é suportada**: postar de novo substitui e apaga a anterior. Ofereça "limpar" no canvas.
+- **Finalizar**: `PUT /api/chamados/{id}/finalizar` com `{latitude, longitude}` (opcional, mesma regra do iniciar). Erros a tratar na UI **antes** de tentar: 409 `SEM_SETORES` / `SEM_CARGOS` / `SEM_ASSINATURA_CLIENTE` / `SEM_ASSINATURA_TECNICO`.
+- Depois de finalizar, o técnico externo **perde o acesso** (o escopo dele não vê FINALIZADO) — mandar para `/visitas` com uma confirmação clara, não deixar numa tela que vai dar 404.
+- Já existe: `useGeolocalizacao`, `ConfirmDialog`, `Button` (variante `action` = verde da marca), `mensagemDeErro`.
+- Login: `ana.externa@medsest.com.br` / `Senha@123`. Testar no viewport de iPad.
+
+**Referência da sessão #14 (execução da visita) — já concluída:**
 - **Tela do técnico externo** (`/visitas`, hoje um `EmBreve`): lista de chamados dele em **cards grandes** (fonte ≥16px, botões ≥44px — tablet-first), com cliente, tipo, endereço, data, recomendações colapsáveis e "Iniciar Visita".
 - **Iniciar** (`PUT /api/chamados/{id}/iniciar`): modal de confirmação + `navigator.geolocation`. ⚠️ **A geolocalização é opcional** no backend — se o técnico negar a permissão, a visita começa mesmo assim. Não bloquear.
 - **Execução**: CRUD de setores (`/api/setores`), cargos (`/api/cargos`) e fotos (`POST /api/fotos` multipart) com auto-save. Só o técnico responsável e só com `EM_ANDAMENTO` (o backend devolve 403 `NAO_E_RESPONSAVEL` / 409 `VISITA_NAO_EDITAVEL`).

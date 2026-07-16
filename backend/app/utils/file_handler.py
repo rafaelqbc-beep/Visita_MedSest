@@ -5,7 +5,7 @@ from pathlib import Path
 
 import aiofiles
 from fastapi import UploadFile, status
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
 from app.config import settings
 from app.utils.exceptions import AppException
@@ -28,10 +28,19 @@ def _validar_imagem(conteudo: bytes) -> str:
     try:
         imagem = Image.open(io.BytesIO(conteudo))
         imagem.verify()
-    except (UnidentifiedImageError, OSError, ValueError):
+    except AppException:
+        raise
+    except Exception:
+        # Exception aberta de propósito: aqui se está fazendo o parse de bytes
+        # que vieram de fora, e QUALQUER falha significa "não é uma imagem
+        # válida" — não um defeito nosso. A lista fechada que existia aqui
+        # (UnidentifiedImageError, OSError, ValueError) deixava escapar o
+        # `SyntaxError` que o Pillow lança para arquivo corrompido (ex.: PNG com
+        # CRC quebrado), e o técnico tomava 500 em vez do aviso. Foto truncada
+        # acontece: upload cortado no 3G, falha da câmera.
         raise AppException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "Arquivo não é uma imagem válida.",
+            "Arquivo não é uma imagem válida ou está corrompido.",
             "ARQUIVO_INVALIDO",
         )
 

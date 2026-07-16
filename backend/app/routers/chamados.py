@@ -19,7 +19,6 @@ from app.schemas.chamado import (
     CancelarRequest,
     ChamadoCreate,
     ChamadoListItem,
-    ChamadoRead,
     ChamadoUpdate,
     FinalizarVisitaRequest,
     IniciarVisitaRequest,
@@ -300,13 +299,13 @@ async def cancelar_chamado(
     return await _recarregar_item(chamado.id, db)
 
 
-@router.put("/{chamado_id}/iniciar", response_model=ChamadoRead)
+@router.put("/{chamado_id}/iniciar", response_model=ChamadoListItem)
 async def iniciar_visita(
     chamado_id: uuid.UUID,
     body: IniciarVisitaRequest,
     db: AsyncSession = Depends(get_db),
     usuario: Usuario = Depends(require_roles(RoleEnum.TECNICO_EXTERNO)),
-) -> ChamadoRead:
+) -> ChamadoListItem:
     """Técnico externo inicia a visita no local: grava horário e geolocalização."""
     chamado = await get_chamado_visivel(chamado_id, usuario, db)
     if chamado.status != StatusChamado.PENDENTE:
@@ -324,11 +323,10 @@ async def iniciar_visita(
     chamado.geoloc_longitude = body.longitude
 
     await db.flush()
-    await db.refresh(chamado)
-    return ChamadoRead.model_validate(chamado)
+    return await _recarregar_item(chamado.id, db)
 
 
-@router.post("/{chamado_id}/assinatura-cliente", response_model=ChamadoRead)
+@router.post("/{chamado_id}/assinatura-cliente", response_model=ChamadoListItem)
 async def assinar_cliente(
     chamado_id: uuid.UUID,
     nome: str = Form(..., description="Nome de quem assinou"),
@@ -336,7 +334,7 @@ async def assinar_cliente(
     file: UploadFile = File(..., description="Imagem do traço do canvas"),
     db: AsyncSession = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
-) -> ChamadoRead:
+) -> ChamadoListItem:
     """Cliente assina no tablet ao conferir os dados no local.
 
     Nome e CPF identificam quem assinou — sem o e-mail de validação, é isso que
@@ -368,17 +366,16 @@ async def assinar_cliente(
     if anterior and anterior != caminho:
         remover_arquivo(anterior)
 
-    await db.refresh(chamado)
-    return ChamadoRead.model_validate(chamado)
+    return await _recarregar_item(chamado.id, db)
 
 
-@router.post("/{chamado_id}/assinatura-tecnico", response_model=ChamadoRead)
+@router.post("/{chamado_id}/assinatura-tecnico", response_model=ChamadoListItem)
 async def assinar_tecnico(
     chamado_id: uuid.UUID,
     file: UploadFile = File(..., description="Imagem do traço do canvas"),
     db: AsyncSession = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
-) -> ChamadoRead:
+) -> ChamadoListItem:
     """Técnico externo assina. A identidade vem do usuário logado — basta o traço."""
     chamado = await get_chamado_editavel(chamado_id, usuario, db)
 
@@ -396,17 +393,16 @@ async def assinar_tecnico(
     if anterior and anterior != caminho:
         remover_arquivo(anterior)
 
-    await db.refresh(chamado)
-    return ChamadoRead.model_validate(chamado)
+    return await _recarregar_item(chamado.id, db)
 
 
-@router.put("/{chamado_id}/finalizar", response_model=ChamadoRead)
+@router.put("/{chamado_id}/finalizar", response_model=ChamadoListItem)
 async def finalizar_visita(
     chamado_id: uuid.UUID,
     body: FinalizarVisitaRequest,
     db: AsyncSession = Depends(get_db),
     usuario: Usuario = Depends(get_current_user),
-) -> ChamadoRead:
+) -> ChamadoListItem:
     """Encerra a visita e libera os dados para o técnico interno.
 
     Exige conteúdo mínimo (1 setor com 1 cargo) e as duas assinaturas — é o
@@ -463,17 +459,16 @@ async def finalizar_visita(
     await notificar_visita_liberada(chamado.id, db)
     await notificar_recibo_cliente(chamado.id, db)
 
-    await db.refresh(chamado)
-    return ChamadoRead.model_validate(chamado)
+    return await _recarregar_item(chamado.id, db)
 
 
-@router.put("/{chamado_id}/reagendar", response_model=ChamadoRead)
+@router.put("/{chamado_id}/reagendar", response_model=ChamadoListItem)
 async def reagendar_chamado(
     chamado_id: uuid.UUID,
     body: ReagendarRequest,
     db: AsyncSession = Depends(get_db),
     usuario: Usuario = Depends(require_roles(RoleEnum.TECNICO_EXTERNO)),
-) -> ChamadoRead:
+) -> ChamadoListItem:
     """O técnico externo propõe nova data e o gestor comercial é avisado."""
     chamado = await get_chamado_visivel(chamado_id, usuario, db)
     if chamado.status != StatusChamado.PENDENTE:
@@ -487,5 +482,4 @@ async def reagendar_chamado(
     await db.flush()
     await notificar_reagendamento(chamado.id, body.nova_data, db)
 
-    await db.refresh(chamado)
-    return ChamadoRead.model_validate(chamado)
+    return await _recarregar_item(chamado.id, db)

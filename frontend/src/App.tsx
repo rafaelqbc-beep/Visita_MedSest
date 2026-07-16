@@ -10,6 +10,8 @@ import ChamadoDetalhePage from '@/pages/chamados/ChamadoDetalhePage'
 import ChamadosPage from '@/pages/chamados/ChamadosPage'
 import NovoChamadoPage from '@/pages/chamados/NovoChamadoPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
+import ExecucaoVisitaPage from '@/pages/visitas/ExecucaoVisitaPage'
+import VisitasPage from '@/pages/visitas/VisitasPage'
 import { EmBreve } from '@/pages/EmBreve'
 import { AuthProvider } from '@/store/AuthContext'
 
@@ -18,7 +20,6 @@ import { AuthProvider } from '@/store/AuthContext'
  * da sidebar — assim um item não some do menu e continua acessível pela URL.
  */
 const PAGINAS = [
-  { para: '/visitas', titulo: 'Minhas visitas', sessao: '#14', roles: ['TECNICO_EXTERNO'] },
   { para: '/relatorios', titulo: 'Relatórios', sessao: '#16', roles: ['ADMIN', 'TECNICO_INTERNO'] },
   { para: '/clientes', titulo: 'Clientes', sessao: '#17', roles: ['ADMIN', 'GESTOR_COMERCIAL'] },
   { para: '/usuarios', titulo: 'Usuários', sessao: '#17', roles: ['ADMIN'] },
@@ -66,6 +67,12 @@ export default function App() {
                 <Route path="/chamados" element={<ChamadosPage />} />
                 <Route path="/chamados/novo" element={<NovoChamadoPage />} />
                 <Route path="/chamados/:id" element={<ChamadoDetalhePage />} />
+              </Route>
+
+              {/* Visitas: a tela de campo do técnico externo */}
+              <Route element={<ProtectedRoute roles={['TECNICO_EXTERNO']} />}>
+                <Route path="/visitas" element={<VisitasPage />} />
+                <Route path="/visitas/:id" element={<ExecucaoVisitaPage />} />
               </Route>
 
               {PAGINAS.map(({ para, titulo, sessao, roles }) => (
