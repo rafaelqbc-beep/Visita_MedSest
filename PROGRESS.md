@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-15
-**Sessão atual:** #12
+**Sessão atual:** #13
 **Status:** Em desenvolvimento
 
 ---
@@ -67,7 +67,7 @@ rastreabilidade que o e-mail dava antes.
 - [x] Autenticação (login, contexto, interceptor de refresh, rotas protegidas)
 - [x] Layout (Sidebar com drawer, Header, rotas por role, indicador de conexão)
 - [x] Dashboard (KPIs, gráficos, filtros, pares em tabela)
-- [ ] Gestão de chamados (gestor)
+- [x] Gestão de chamados (lista, novo, detalhe/editar, cancelar)
 - [ ] Módulo de visita tablet + offline/IndexedDB
 - [ ] Tela de conferência + assinaturas no canvas (cliente e técnico)
 - [ ] Módulo de relatório (técnico interno)
@@ -82,13 +82,17 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #12 — dashboard concluído. Nada em aberto ao encerrar._
+_Sessão #13 — gestão de chamados concluída. Nada em aberto ao encerrar._
+
+---
+
+## ❓ Pergunta em aberto para o usuário
+**Um chamado FINALIZADO (já assinado pelo cliente e liberado ao técnico interno) pode ser cancelado?** Hoje pode: o backend só barra o recancelamento (`status != CANCELADO`), então a UI mostra "Cancelar chamado" mesmo num chamado assinado e exportado. Isso pode ser revisionismo de dado — a assinatura do cliente existe. Se a operação achar que não faz sentido, é uma mudança pequena (`podeCancelar` no backend + no detalhe). **Não mudei por conta própria**: a decisão de quem pode cancelar foi sua na #5, e ali não perguntei sobre quais status.
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida:
-13. Frontend: gestão de chamados (gestor)
 14. Frontend: módulo de visita tablet + offline/IndexedDB
 15. Frontend: tela de conferência + assinaturas no canvas
 16. Frontend: módulo de relatório (técnico interno)
@@ -286,6 +290,18 @@ Ordem sugerida:
 - **🐛 BUG REAL que só a inspeção da tela pegou:** o tick padrão do Recharts **quebra rótulo longo em vários `<tspan>` sem espaço** — "Em andamento" virava o texto **`"Emandamento"` no DOM**, que é o que um leitor de tela leria (idem "Ana Tecnica Externa"). Corrigido na origem com um tick customizado de linha única (`TickCategoria`). Alargar o eixo não resolvia.
 - **Validado com E2E: 22/22** — números conferidos contra o seed (abertos=2, duração 2,0h, Novo Cliente 40%, conversão 50%), `role=meter` com `aria-valuenow=50`, **zero pizza/donut na página**, 5 cards com par em tabela, filtro de tipo derrubando o KPI mas **não** distorcendo a conversão, período futuro zerando as médias mas não os operacionais, e o escopo do técnico interno.
 
+**Sessão #13 (2026-07-16) — Gestão de chamados:**
+- Arquivos: `pages/chamados/{ChamadosPage,NovoChamadoPage,ChamadoDetalhePage}.tsx`, `components/{ClienteAutocomplete,ConfirmDialog}.tsx`, `components/ui/{Select,Textarea,Paginacao}.tsx`, `services/chamadoService.ts`, `hooks/useChamados.ts`, `types/chamado.ts`, `lib/formato.ts`.
+- **A trava do 409 aparece ANTES do erro** (era o ponto de atenção anotado na #12): com `FINALIZADO`/`CANCELADO`, os campos de dados ficam **desabilitados** e um aviso âmbar explica o motivo ("Visita finalizada e assinada pelo cliente…"). Os selects de técnico seguem habilitados, porque o backend permite remanejar a qualquer momento — e o payload do PUT só manda os técnicos nesse caso. **Testado dos dois lados:** campos travados E remanejamento funcionando sem 409.
+- **`limpar()` no service remove `undefined`/`''`, mas o PUT preserva `null`**: `tecnico_externo_id: null` é como se desatribui um técnico; tratar null como "não informado" impediria isso.
+- **Autocomplete de cliente** (`ClienteAutocomplete`): debounce de 300ms, busca só com a lista aberta (`enabled: aberto` — senão a query roda em toda montagem), clique-fora fecha, `role=listbox/option`. **Pré-seleciona o `tipo_visita_padrao` do cliente** ao escolher, mas deixa trocar.
+- **O técnico interno não é campo do formulário de criação** — o round-robin decide. Um aviso azul diz isso, senão o gestor procura onde escolher.
+- `lib/formato.ts`: `dataHora()` converte UTC→local via date-fns; **`data()` monta a `Date` componente a componente** porque `data_proposta` é DATE puro — `parseISO` num date-only assume UTC e volta um dia em fuso negativo.
+- Lista: filtros numa linha só (status, tipo, técnico, busca com debounce), `keepPreviousData` para trocar de página sem piscar, **qualquer filtro novo volta para a página 1** (senão o usuário fica numa página que não existe mais no resultado filtrado). A linha inteira é clicável, mas o nº é um `<Link>` real — o teclado precisa de alvo focável.
+- `ConfirmDialog`: **foco no botão seguro**, não no destrutivo — um Enter distraído não pode cancelar um chamado. Esc fecha. Texto do aviso muda se a visita já estava `EM_ANDAMENTO`.
+- Botão "Salvar" desabilitado enquanto `!isDirty` — sem alteração, não há o que salvar.
+- **Validado com E2E: 36/36** — lista, filtros, busca por nº e razão social, estado vazio, validação de obrigatórios, autocomplete (8 clientes), pré-seleção do tipo padrão, criação com round-robin atribuindo o interno, edição persistindo, **a trava completa** (3 campos desabilitados + 2 técnicos editáveis + remanejar sem 409), cancelamento com confirmação, Esc sem cancelar, e o chamado travando após cancelado. Dados de teste removidos e o técnico do chamado #4 (que o teste remanejou) restaurado ao seed.
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
@@ -316,7 +332,18 @@ gestor abre chamado (round-robin atribui o tecnico interno)
 cargos · fotos · dashboard · exportação. Tudo com escopo por perfil e erros
 `{detail, code}`. Explorar em `/docs`.
 
-**Para a próxima sessão (#13) — gestão de chamados (gestor):**
+**Para a próxima sessão (#14) — módulo de visita no tablet + offline:** a sessão mais complexa do frontend.
+- **Tela do técnico externo** (`/visitas`, hoje um `EmBreve`): lista de chamados dele em **cards grandes** (fonte ≥16px, botões ≥44px — tablet-first), com cliente, tipo, endereço, data, recomendações colapsáveis e "Iniciar Visita".
+- **Iniciar** (`PUT /api/chamados/{id}/iniciar`): modal de confirmação + `navigator.geolocation`. ⚠️ **A geolocalização é opcional** no backend — se o técnico negar a permissão, a visita começa mesmo assim. Não bloquear.
+- **Execução**: CRUD de setores (`/api/setores`), cargos (`/api/cargos`) e fotos (`POST /api/fotos` multipart) com auto-save. Só o técnico responsável e só com `EM_ANDAMENTO` (o backend devolve 403 `NAO_E_RESPONSAVEL` / 409 `VISITA_NAO_EDITAVEL`).
+- **Offline (IndexedDB + `idb`)**: cachear o chamado ao iniciar; gravar setores/cargos/fotos com `synced: false`; sincronizar no `window.addEventListener('online')`. Fotos em base64 no IndexedDB → multipart ao sincronizar.
+  - ⚠️ **`navigator.onLine` mente**: um tablet num Wi-Fi sem internet aparece como online. Antes de sincronizar, **confirmar com uma chamada real** (ex.: `/api/health`). O `useOnlineStatus` da #11 serve para o indicador, não para decidir sincronizar.
+  - ⚠️ **A fila de refresh (`renovarSessao`) já existe e usa Web Locks** — qualquer chamada nova ao `/auth/refresh` deve passar por ela (rotação de token: chamada duplicada = sessão morta; já mordeu duas vezes).
+- Já existe: `OfflineIndicator`, `useOnlineStatus`, `ConfirmDialog`, `Button`/`Input`/`Select`/`Textarea`/`FormField`, `StatusBadge`, `TipoVisitaBadge`, `mensagemDeErro`.
+- Login de teste: `ana.externa@medsest.com.br` / `Senha@123` (tem o chamado #1 PENDENTE e o #2 EM_ANDAMENTO... na verdade o #2 é do Bruno; conferir no seed).
+- A sessão #15 vem depois com conferência + assinaturas no canvas.
+
+**Referência da sessão #13 (chamados) — já concluída:**
 - Lista de chamados consumindo `GET /api/chamados` (paginado; filtros: status, tipo_visita, cliente_id, tecnico_externo_id, tecnico_interno_id, unidade_id (só ADMIN), periodo_inicio/fim, search por nº ou razão social). O `ChamadoListItem` já traz `cliente_razao_social`, `cliente_cidade` e os nomes dos técnicos — não precisa buscar relação por relação.
 - Criar chamado (`POST`): cliente (autocomplete em `/api/clientes`), **tipo_visita obrigatório**, data proposta, técnico externo, recomendações. O técnico interno é atribuído sozinho por round-robin — não é campo de formulário.
 - Detalhe do chamado, editar (`PUT`), cancelar (`PUT /{id}/cancelar`).

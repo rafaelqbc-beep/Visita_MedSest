@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/hooks/useAuth'
 import { rotaInicial } from '@/lib/navegacao'
 import LoginPage from '@/pages/auth/LoginPage'
+import ChamadoDetalhePage from '@/pages/chamados/ChamadoDetalhePage'
+import ChamadosPage from '@/pages/chamados/ChamadosPage'
+import NovoChamadoPage from '@/pages/chamados/NovoChamadoPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
 import { EmBreve } from '@/pages/EmBreve'
 import { AuthProvider } from '@/store/AuthContext'
@@ -15,7 +18,6 @@ import { AuthProvider } from '@/store/AuthContext'
  * da sidebar — assim um item não some do menu e continua acessível pela URL.
  */
 const PAGINAS = [
-  { para: '/chamados', titulo: 'Chamados', sessao: '#13', roles: ['ADMIN', 'GESTOR_COMERCIAL'] },
   { para: '/visitas', titulo: 'Minhas visitas', sessao: '#14', roles: ['TECNICO_EXTERNO'] },
   { para: '/relatorios', titulo: 'Relatórios', sessao: '#16', roles: ['ADMIN', 'TECNICO_INTERNO'] },
   { para: '/clientes', titulo: 'Clientes', sessao: '#17', roles: ['ADMIN', 'GESTOR_COMERCIAL'] },
@@ -58,6 +60,14 @@ export default function App() {
               <Route path="/" element={<Inicio />} />
               {/* Dashboard: todos os perfis; o backend recorta os números */}
               <Route path="/dashboard" element={<DashboardPage />} />
+
+              {/* Chamados: mesmos perfis do item de menu em lib/navegacao.ts */}
+              <Route element={<ProtectedRoute roles={['ADMIN', 'GESTOR_COMERCIAL']} />}>
+                <Route path="/chamados" element={<ChamadosPage />} />
+                <Route path="/chamados/novo" element={<NovoChamadoPage />} />
+                <Route path="/chamados/:id" element={<ChamadoDetalhePage />} />
+              </Route>
+
               {PAGINAS.map(({ para, titulo, sessao, roles }) => (
                 <Route key={para} element={<ProtectedRoute roles={[...roles]} />}>
                   <Route path={para} element={<EmBreve titulo={titulo} sessao={sessao} />} />
