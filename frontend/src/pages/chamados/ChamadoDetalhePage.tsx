@@ -11,6 +11,7 @@ import { FormField } from '@/components/ui/FormField'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Textarea } from '@/components/ui/Textarea'
+import { useAuth } from '@/hooks/useAuth'
 import {
   useAtualizarChamado,
   useCancelarChamado,
@@ -44,6 +45,7 @@ function Campo({ rotulo, valor }: { rotulo: string; valor: string }) {
 
 export default function ChamadoDetalhePage() {
   const { id = '' } = useParams()
+  const { usuario } = useAuth()
   const { data: chamado, isLoading, isError } = useChamado(id)
   const atualizar = useAtualizarChamado(id)
   const cancelar = useCancelarChamado(id)
@@ -93,7 +95,13 @@ export default function ChamadoDetalhePage() {
   // técnico; qualquer outro campo devolve 409 CHAMADO_TRAVADO. A UI desabilita
   // os campos e explica — o usuário não pode descobrir isso por um erro.
   const travado = chamado.status === 'FINALIZADO' || chamado.status === 'CANCELADO'
-  const podeCancelar = chamado.status !== 'CANCELADO'
+
+  // Cancelar PENDENTE/EM_ANDAMENTO é rotina de agenda. Anular um FINALIZADO
+  // desfaz um fato assinado pelo cliente: só ADMIN, e com motivo. O botão nem
+  // aparece para o gestor — melhor do que deixar ele tentar e tomar 403.
+  const anulacao = chamado.status === 'FINALIZADO'
+  const podeCancelar =
+    chamado.status !== 'CANCELADO' && (!anulacao || usuario?.role === 'ADMIN')
 
   async function onSubmit(form: FormEditar) {
     setErroApi(null)
@@ -120,10 +128,10 @@ export default function ChamadoDetalhePage() {
     }
   }
 
-  async function aoCancelar() {
+  async function aoCancelar(motivo?: string) {
     setErroApi(null)
     try {
-      await cancelar.mutateAsync()
+      await cancelar.mutateAsync(motivo)
       setConfirmarCancelar(false)
     } catch (erro) {
       setConfirmarCancelar(false)
@@ -139,7 +147,7 @@ export default function ChamadoDetalhePage() {
         podeCancelar && (
           <Button variante="destructive" onClick={() => setConfirmarCancelar(true)}>
             <Ban className="h-4 w-4" aria-hidden />
-            Cancelar chamado
+            {anulacao ? 'Anular visita' : 'Cancelar chamado'}
           </Button>
         )
       }
@@ -196,6 +204,27 @@ export default function ChamadoDetalhePage() {
               Início em {Number(chamado.geoloc_latitude).toFixed(5)},{' '}
               {Number(chamado.geoloc_longitude).toFixed(5)}
             </p>
+          )}
+
+          {/* Cancelado: quem, quando e por quê — o gestor olhando a lista vai
+              querer saber, e é o rastro de auditoria da anulação. */}
+          {chamado.status === 'CANCELADO' && (
+            <div className="rounded-lg border border-red-200 bg-error-bg p-3">
+              <p className="text-xs font-medium text-error">Cancelamento</p>
+              <dl className="mt-2 grid gap-2">
+                <Campo rotulo="Por" valor={chamado.cancelado_por_nome ?? '—'} />
+                <Campo rotulo="Quando" valor={dataHora(chamado.dt_cancelamento)} />
+              </dl>
+              {chamado.motivo_cancelamento ? (
+                <p className="mt-2 whitespace-pre-wrap text-sm text-content">
+                  {chamado.motivo_cancelamento}
+                </p>
+              ) : (
+                <p className="mt-2 text-sm italic text-content-secondary">
+                  Sem motivo registrado.
+                </p>
+              )}
+            </div>
           )}
         </section>
 
@@ -285,16 +314,31 @@ export default function ChamadoDetalhePage() {
 
       <ConfirmDialog
         aberto={confirmarCancelar}
-        titulo={`Cancelar o chamado #${chamado.numero_chamado}?`}
-        descricao={
-          chamado.status === 'EM_ANDAMENTO'
-            ? 'A visita já foi iniciada pelo técnico. O cancelamento interrompe o atendimento e não pode ser desfeito.'
-            : 'O chamado sai da fila do técnico externo. Esta ação não pode ser desfeita.'
+        titulo={
+          anulacao
+            ? `Anular a visita do chamado #${chamado.numero_chamado}?`
+            : `Cancelar o chamado #${chamado.numero_chamado}?`
         }
-        rotuloConfirmar="Cancelar chamado"
+        descricao={
+          anulacao
+            ? `Esta visita foi conferida e assinada por ${chamado.assinatura_cliente_nome ?? 'o cliente'} no local. Anulá-la desfaz um registro assinado e remove os dados do técnico interno. Esta ação não pode ser desfeita.`
+            : chamado.status === 'EM_ANDAMENTO'
+              ? 'A visita já foi iniciada pelo técnico. O cancelamento interrompe o atendimento e não pode ser desfeito.'
+              : 'O chamado sai da fila do técnico externo. Esta ação não pode ser desfeita.'
+        }
+        motivo={{
+          label: anulacao ? 'Motivo da anulação' : 'Motivo do cancelamento',
+          // Rotina de agenda não precisa de justificativa; anular um registro
+          // assinado precisa.
+          obrigatorio: anulacao,
+          placeholder: anulacao
+            ? 'Ex.: técnico visitou a empresa errada; chamado duplicado.'
+            : 'Ex.: cliente desmarcou por telefone.',
+        }}
+        rotuloConfirmar={anulacao ? 'Anular visita' : 'Cancelar chamado'}
         destrutivo
         carregando={cancelar.isPending}
-        onConfirmar={() => void aoCancelar()}
+        onConfirmar={(motivo) => void aoCancelar(motivo)}
         onCancelar={() => setConfirmarCancelar(false)}
       />
     </PageWrapper>

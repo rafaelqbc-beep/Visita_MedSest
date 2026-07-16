@@ -41,7 +41,7 @@ export function useAtualizarChamado(id: string) {
 export function useCancelarChamado(id: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => service.cancelarChamado(id),
+    mutationFn: (motivo?: string) => service.cancelarChamado(id, motivo),
     onSuccess: (dados) => {
       qc.setQueryData(['chamado', id], dados)
       void qc.invalidateQueries({ queryKey: ['chamados'] })

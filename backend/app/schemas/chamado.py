@@ -33,6 +33,17 @@ class ChamadoUpdate(BaseModel):
     data_proposta: date | None = None
 
 
+class CancelarRequest(BaseModel):
+    """Motivo do cancelamento.
+
+    Opcional para chamado PENDENTE/EM_ANDAMENTO (rotina de agenda), mas
+    OBRIGATÓRIO para anular um FINALIZADO — a validação fica no router, que é
+    quem conhece o status.
+    """
+
+    motivo: str | None = None
+
+
 class ReagendarRequest(BaseModel):
     """Técnico externo propõe nova data para a visita."""
 
@@ -94,6 +105,10 @@ class ChamadoRead(BaseModel):
     dt_liberado_tecnico_interno: datetime | None = None
     dt_exportacao_word: datetime | None = None
 
+    motivo_cancelamento: str | None = None
+    dt_cancelamento: datetime | None = None
+    cancelado_por_id: uuid.UUID | None = None
+
 
 class ChamadoListItem(ChamadoRead):
     """Item de listagem — inclui rótulos prontos para a tela, evitando que o
@@ -103,3 +118,4 @@ class ChamadoListItem(ChamadoRead):
     cliente_cidade: str | None = None
     tecnico_externo_nome: str | None = None
     tecnico_interno_nome: str | None = None
+    cancelado_por_nome: str | None = None

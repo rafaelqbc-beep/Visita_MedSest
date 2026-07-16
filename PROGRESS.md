@@ -82,12 +82,9 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #13 — gestão de chamados concluída. Nada em aberto ao encerrar._
+_Sessão #13b — regras de cancelamento/anulação concluídas. Nada em aberto ao encerrar._
 
 ---
-
-## ❓ Pergunta em aberto para o usuário
-**Um chamado FINALIZADO (já assinado pelo cliente e liberado ao técnico interno) pode ser cancelado?** Hoje pode: o backend só barra o recancelamento (`status != CANCELADO`), então a UI mostra "Cancelar chamado" mesmo num chamado assinado e exportado. Isso pode ser revisionismo de dado — a assinatura do cliente existe. Se a operação achar que não faz sentido, é uma mudança pequena (`podeCancelar` no backend + no detalhe). **Não mudei por conta própria**: a decisão de quem pode cancelar foi sua na #5, e ali não perguntei sobre quais status.
 
 ---
 
@@ -301,6 +298,21 @@ Ordem sugerida:
 - `ConfirmDialog`: **foco no botão seguro**, não no destrutivo — um Enter distraído não pode cancelar um chamado. Esc fecha. Texto do aviso muda se a visita já estava `EM_ANDAMENTO`.
 - Botão "Salvar" desabilitado enquanto `!isDirty` — sem alteração, não há o que salvar.
 - **Validado com E2E: 36/36** — lista, filtros, busca por nº e razão social, estado vazio, validação de obrigatórios, autocomplete (8 clientes), pré-seleção do tipo padrão, criação com round-robin atribuindo o interno, edição persistindo, **a trava completa** (3 campos desabilitados + 2 técnicos editáveis + remanejar sem 409), cancelamento com confirmação, Esc sem cancelar, e o chamado travando após cancelado. Dados de teste removidos e o técnico do chamado #4 (que o teste remanejou) restaurado ao seed.
+
+**Sessão #13b (2026-07-16) — Cancelar vs. anular (decisão do usuário):**
+- **O diagnóstico:** um único estado carregava dois significados. "Cliente desmarcou" é **cancelar** (agenda, rotina); "a visita aconteceu, foi assinada, mas foi um engano" é **anular** (desfazer um fato). Mesmo botão, mesma regra — por isso incomodava.
+- **Decisão do usuário:** gestor cancela `PENDENTE`/`EM_ANDAMENTO` direto (motivo opcional); anular um `FINALIZADO` exige **ADMIN + motivo obrigatório**. Bloquear de vez foi descartado: existem erros reais (empresa errada, chamado duplicado) e sem saída a única correção seria mexer no banco.
+- **Migration `0003_motivo_cancelamento`** (reversível, round-trip testado): `motivo_cancelamento`, `dt_cancelamento`, `cancelado_por_id`. Fecha também a pendência aberta na #5 (motivo do cancelamento).
+- `PUT /api/chamados/{id}/cancelar` agora aceita `{motivo}`; erros novos: **403 `ANULACAO_EXIGE_ADMIN`**, **422 `MOTIVO_OBRIGATORIO`** (motivo só com espaços também reprova). Sempre grava quem/quando.
+- Frontend: o botão vira **"Anular visita"** e **nem aparece para o gestor** num FINALIZADO (melhor que deixar tentar e tomar 403). O diálogo **cita quem assinou pelo nome** ("conferida e assinada por Maria Souza no local") — o admin vê o peso do que desfaz. O `ConfirmDialog` ganhou campo de motivo opcional/obrigatório. O detalhe de um chamado cancelado mostra um card com quem, quando e por quê.
+
+**🐛 BUG REAL descoberto aqui, introduzido na #13 (mentira de tipo):**
+- `PUT /chamados/{id}` e `/cancelar` devolviam **`ChamadoRead`**, que **não tem os campos `*_nome`** — mas `chamadoService` declarava `Promise<ChamadoListItem>` e o hook punha isso no cache. O TypeScript não pega: a mentira está na fronteira com a API.
+- **Sintoma:** após salvar uma edição, o **nome do cliente sumiria do cabeçalho** até o próximo refetch. Passou despercebido na #13 porque o teste dava reload logo depois (o GET repõe os dados).
+- **Corrigido na origem:** `POST`, `PUT` e `/cancelar` agora devolvem `ChamadoListItem` completo, via o helper `_recarregar_item()` (relê com as relações após o flush). Agora a declaração do service é verdade.
+- **Lição:** quando duas rotas do mesmo recurso têm formatos diferentes, o cache do React Query mistura os dois e o defeito só aparece na tela, entre um refetch e outro.
+- **Validado:** 19/19 no backend (regras por perfil e status) e 19/19 no E2E (gestor sem o botão, admin bloqueado sem motivo, motivo aparecendo no detalhe).
+- **Nota de manutenção:** os testes **cancelam chamados do seed**, então o banco precisa de reset entre execuções — `alembic downgrade base && alembic upgrade head && python seed.py`. As 3 migrations rodam do zero sem erro (verificado).
 
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.

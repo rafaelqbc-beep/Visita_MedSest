@@ -40,8 +40,10 @@ export async function atualizarChamado(id: string, body: ChamadoUpdate): Promise
   return data
 }
 
-export async function cancelarChamado(id: string): Promise<ChamadoListItem> {
-  const { data } = await api.put<ChamadoListItem>(`/chamados/${id}/cancelar`)
+export async function cancelarChamado(id: string, motivo?: string): Promise<ChamadoListItem> {
+  const { data } = await api.put<ChamadoListItem>(`/chamados/${id}/cancelar`, {
+    motivo: motivo?.trim() || null,
+  })
   return data
 }
 

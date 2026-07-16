@@ -7,6 +7,10 @@ export interface ChamadoListItem extends Chamado {
   cliente_cidade: string | null
   tecnico_externo_nome: string | null
   tecnico_interno_nome: string | null
+  motivo_cancelamento: string | null
+  dt_cancelamento: string | null
+  cancelado_por_id: string | null
+  cancelado_por_nome: string | null
 }
 
 export interface Page<T> {

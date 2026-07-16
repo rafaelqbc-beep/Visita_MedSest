@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,6 +16,7 @@ from app.models.enums import RoleEnum, StatusChamado, TipoVisitaEnum
 from app.models.setor import Setor
 from app.models.usuario import Usuario
 from app.schemas.chamado import (
+    CancelarRequest,
     ChamadoCreate,
     ChamadoListItem,
     ChamadoRead,
@@ -69,13 +70,35 @@ async def _validar_tecnico(
         )
 
 
+_RELACOES_ITEM = (
+    selectinload(Chamado.cliente),
+    selectinload(Chamado.tecnico_externo),
+    selectinload(Chamado.tecnico_interno),
+    selectinload(Chamado.cancelado_por),
+)
+
+
 def _para_item(chamado: Chamado) -> ChamadoListItem:
     item = ChamadoListItem.model_validate(chamado)
     item.cliente_razao_social = chamado.cliente.razao_social if chamado.cliente else None
     item.cliente_cidade = chamado.cliente.cidade if chamado.cliente else None
     item.tecnico_externo_nome = chamado.tecnico_externo.nome if chamado.tecnico_externo else None
     item.tecnico_interno_nome = chamado.tecnico_interno.nome if chamado.tecnico_interno else None
+    item.cancelado_por_nome = chamado.cancelado_por.nome if chamado.cancelado_por else None
     return item
+
+
+async def _recarregar_item(chamado_id: uuid.UUID, db: AsyncSession) -> ChamadoListItem:
+    """Relê o chamado com as relações para devolver o item completo.
+
+    As mutações devolvem o mesmo formato do GET: o frontend guarda a resposta
+    no cache, e devolver um objeto sem os campos `*_nome` faria o nome do
+    cliente sumir da tela até o próximo refetch.
+    """
+    completo = await db.scalar(
+        select(Chamado).where(Chamado.id == chamado_id).options(*_RELACOES_ITEM)
+    )
+    return _para_item(completo)
 
 
 @router.get("", response_model=Page[ChamadoListItem])
@@ -95,11 +118,7 @@ async def listar_chamados(
 ) -> Page[ChamadoListItem]:
     stmt = (
         select(Chamado)
-        .options(
-            selectinload(Chamado.cliente),
-            selectinload(Chamado.tecnico_externo),
-            selectinload(Chamado.tecnico_interno),
-        )
+        .options(*_RELACOES_ITEM)
         .order_by(Chamado.numero_chamado.desc())
     )
     stmt = aplicar_escopo_chamados(stmt, usuario)
@@ -141,25 +160,15 @@ async def obter_chamado(
     usuario: Usuario = Depends(get_current_user),
 ) -> ChamadoListItem:
     chamado = await get_chamado_visivel(chamado_id, usuario, db)
-    stmt = (
-        select(Chamado)
-        .where(Chamado.id == chamado.id)
-        .options(
-            selectinload(Chamado.cliente),
-            selectinload(Chamado.tecnico_externo),
-            selectinload(Chamado.tecnico_interno),
-        )
-    )
-    completo = await db.scalar(stmt)
-    return _para_item(completo)
+    return await _recarregar_item(chamado.id, db)
 
 
-@router.post("", response_model=ChamadoRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ChamadoListItem, status_code=status.HTTP_201_CREATED)
 async def criar_chamado(
     body: ChamadoCreate,
     db: AsyncSession = Depends(get_db),
     usuario: Usuario = Depends(_GESTAO),
-) -> ChamadoRead:
+) -> ChamadoListItem:
     cliente = await db.get(Cliente, body.cliente_id)
     if cliente is None:
         raise AppException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Cliente inválido.", "CLIENTE_INVALIDO")
@@ -213,17 +222,16 @@ async def criar_chamado(
 
     await notificar_novo_chamado(chamado.id, db)
 
-    await db.refresh(chamado)
-    return ChamadoRead.model_validate(chamado)
+    return await _recarregar_item(chamado.id, db)
 
 
-@router.put("/{chamado_id}", response_model=ChamadoRead)
+@router.put("/{chamado_id}", response_model=ChamadoListItem)
 async def atualizar_chamado(
     chamado_id: uuid.UUID,
     body: ChamadoUpdate,
     db: AsyncSession = Depends(get_db),
     usuario: Usuario = Depends(_GESTAO),
-) -> ChamadoRead:
+) -> ChamadoListItem:
     chamado = await get_chamado_visivel(chamado_id, usuario, db)
     dados = body.model_dump(exclude_unset=True)
 
@@ -245,24 +253,51 @@ async def atualizar_chamado(
         setattr(chamado, campo, valor)
 
     await db.flush()
-    await db.refresh(chamado)
-    return ChamadoRead.model_validate(chamado)
+    return await _recarregar_item(chamado.id, db)
 
 
-@router.put("/{chamado_id}/cancelar", response_model=ChamadoRead)
+@router.put("/{chamado_id}/cancelar", response_model=ChamadoListItem)
 async def cancelar_chamado(
     chamado_id: uuid.UUID,
+    body: CancelarRequest | None = None,
     db: AsyncSession = Depends(get_db),
     usuario: Usuario = Depends(_GESTAO),
-) -> ChamadoRead:
+) -> ChamadoListItem:
+    """Cancela o chamado, registrando quem, quando e por quê.
+
+    Cancelar um chamado PENDENTE/EM_ANDAMENTO é rotina de agenda: o gestor faz,
+    e o motivo é opcional. Já **anular um FINALIZADO desfaz um fato assinado
+    pelo cliente** (com nome, CPF e geolocalização), possivelmente já exportado
+    para o PGR — por isso exige ADMIN e um motivo registrado.
+    """
     chamado = await get_chamado_visivel(chamado_id, usuario, db)
+    motivo = (body.motivo or "").strip() if body else ""
+
     if chamado.status == StatusChamado.CANCELADO:
         raise AppException(status.HTTP_409_CONFLICT, "Chamado já está cancelado.", "JA_CANCELADO")
 
+    if chamado.status == StatusChamado.FINALIZADO:
+        if usuario.role != RoleEnum.ADMIN:
+            raise AppException(
+                status.HTTP_403_FORBIDDEN,
+                "A visita já foi conferida e assinada pelo cliente. Só um administrador "
+                "pode anulá-la.",
+                "ANULACAO_EXIGE_ADMIN",
+            )
+        if not motivo:
+            raise AppException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Informe o motivo para anular uma visita já assinada pelo cliente.",
+                "MOTIVO_OBRIGATORIO",
+            )
+
     chamado.status = StatusChamado.CANCELADO
+    chamado.motivo_cancelamento = motivo or None
+    chamado.dt_cancelamento = _agora()
+    chamado.cancelado_por_id = usuario.id
+
     await db.flush()
-    await db.refresh(chamado)
-    return ChamadoRead.model_validate(chamado)
+    return await _recarregar_item(chamado.id, db)
 
 
 @router.put("/{chamado_id}/iniciar", response_model=ChamadoRead)

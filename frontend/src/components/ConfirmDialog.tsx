@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { Textarea } from '@/components/ui/Textarea'
 
 interface Props {
   aberto: boolean
@@ -9,7 +10,13 @@ interface Props {
   rotuloConfirmar?: string
   destrutivo?: boolean
   carregando?: boolean
-  onConfirmar: () => void
+  /** Pede uma justificativa antes de confirmar. */
+  motivo?: {
+    label: string
+    obrigatorio: boolean
+    placeholder?: string
+  }
+  onConfirmar: (motivo?: string) => void
   onCancelar: () => void
 }
 
@@ -20,13 +27,20 @@ export function ConfirmDialog({
   rotuloConfirmar = 'Confirmar',
   destrutivo = false,
   carregando = false,
+  motivo,
   onConfirmar,
   onCancelar,
 }: Props) {
   const refCancelar = useRef<HTMLButtonElement>(null)
+  const [texto, setTexto] = useState('')
+  const [erro, setErro] = useState(false)
 
   useEffect(() => {
-    if (!aberto) return
+    if (!aberto) {
+      setTexto('')
+      setErro(false)
+      return
+    }
     // Foco no botão seguro, não no destrutivo: um Enter distraído não pode
     // cancelar um chamado.
     refCancelar.current?.focus()
@@ -36,6 +50,14 @@ export function ConfirmDialog({
     window.addEventListener('keydown', aoTeclar)
     return () => window.removeEventListener('keydown', aoTeclar)
   }, [aberto, onCancelar])
+
+  function confirmar() {
+    if (motivo?.obrigatorio && !texto.trim()) {
+      setErro(true)
+      return
+    }
+    onConfirmar(texto.trim() || undefined)
+  }
 
   if (!aberto) return null
 
@@ -67,13 +89,41 @@ export function ConfirmDialog({
             </p>
           </div>
         </div>
+
+        {motivo && (
+          <div className="mt-4 space-y-1.5">
+            <label htmlFor="confirm-motivo" className="block text-sm font-medium text-content-label">
+              {motivo.label}
+              {!motivo.obrigatorio && (
+                <span className="ml-1 font-normal text-content-secondary">(opcional)</span>
+              )}
+            </label>
+            <Textarea
+              id="confirm-motivo"
+              rows={3}
+              value={texto}
+              erro={erro}
+              placeholder={motivo.placeholder}
+              onChange={(e) => {
+                setTexto(e.target.value)
+                if (erro) setErro(false)
+              }}
+            />
+            {erro && (
+              <p role="alert" className="text-sm text-error">
+                Informe o motivo para continuar.
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="mt-6 flex justify-end gap-2">
           <Button ref={refCancelar} variante="secondary" onClick={onCancelar} disabled={carregando}>
             Voltar
           </Button>
           <Button
             variante={destrutivo ? 'destructive' : 'primary'}
-            onClick={onConfirmar}
+            onClick={confirmar}
             carregando={carregando}
           >
             {rotuloConfirmar}

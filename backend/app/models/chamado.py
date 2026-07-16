@@ -88,12 +88,22 @@ class Chamado(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     dt_liberado_tecnico_interno: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     dt_exportacao_word: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # --- Cancelamento ---
+    # Anular um chamado FINALIZADO desfaz um fato assinado pelo cliente, então
+    # fica registrado quem fez, quando e por quê.
+    motivo_cancelamento: Mapped[str | None] = mapped_column(Text)
+    dt_cancelamento: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelado_por_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("usuarios.id")
+    )
+
     # Relacionamentos
     cliente: Mapped["Cliente"] = relationship("Cliente")  # noqa: F821
     unidade_medsest: Mapped["UnidadeMedsest"] = relationship("UnidadeMedsest")  # noqa: F821
     gestor_comercial: Mapped["Usuario"] = relationship("Usuario", foreign_keys=[gestor_comercial_id])  # noqa: F821
     tecnico_externo: Mapped["Usuario | None"] = relationship("Usuario", foreign_keys=[tecnico_externo_id])  # noqa: F821
     tecnico_interno: Mapped["Usuario | None"] = relationship("Usuario", foreign_keys=[tecnico_interno_id])  # noqa: F821
+    cancelado_por: Mapped["Usuario | None"] = relationship("Usuario", foreign_keys=[cancelado_por_id])  # noqa: F821
 
     setores: Mapped[list["Setor"]] = relationship(  # noqa: F821
         back_populates="chamado", cascade="all, delete-orphan", order_by="Setor.ordem"
