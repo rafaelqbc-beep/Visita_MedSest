@@ -261,6 +261,14 @@ Ordem sugerida:
 - **⚠️ Artefato de ferramenta (não é bug):** no screenshot do Playwright com `isMobile: true`, o header `sticky` **aparece duplicado**. Verifiquei o DOM: `1 header, 1 botão Sair, top: 0`. É a captura do Chromium em emulação mobile, não o app. **Não tente "consertar"** — se aparecer de novo, cheque o DOM antes.
 - **Erro de teste recorrente:** `getByText('Online')` casa 2× — o `OfflineIndicator` tem versão curta (mobile) e longa (desktop), uma escondida por CSS. Usar `.first()`.
 
+**Sessão #11b (2026-07-16) — Concorrência (pergunta do usuário: "vários usuários ao mesmo tempo dá problema?"):**
+- **Usuários diferentes: nenhum problema, comprovado.** Cada um tem seu cookie e sua linha em `refresh_tokens`; não há estado compartilhado. Testado: 4 perfis logando ao mesmo tempo mantêm menus e `/me` corretos, e o logout de um não derruba os outros.
+- **🐛 BUG REAL ENCONTRADO — mesmo usuário em várias abas.** A dedução de refresh da #10 era **por aba** (variável de módulo), mas o **cookie é compartilhado pelo navegador**. Abas abrindo juntas mandavam o mesmo refresh token; a primeira rotacionava e as outras encontravam um token inexistente → deslogavam. **Medido: com 3 abas, `[true, false, true]`** — uma caía. Plausível de verdade: um gestor no desktop com dashboard numa aba e chamados noutra.
+- **Correção: Web Locks API** (`navigator.locks.request`), que coordena abas da mesma origem. Agora são **duas camadas**: (1) promise compartilhada dentro da aba, (2) Web Lock entre abas. Funciona porque o cookie é lido na hora do request — a segunda aba, ao entrar no lock, já usa o token que a primeira acabou de receber. Fallback: sem `navigator.locks` (navegador antigo), roda direto, como antes. **Resultado: 5 abas simultâneas → `[true,true,true,true,true]`**, e todas seguem chamando a API.
+- `authService.restaurarSessao` e o interceptor agora usam a **mesma** `renovarSessao()` de `api.ts` — a dedução duplicada foi removida.
+- **Round-robin sob concorrência real, finalmente testado:** 6 chamados criados **em paralelo** (`asyncio.gather`) distribuíram **exatamente 2 para cada um dos 3 técnicos**, sem `numero_chamado` repetido. Isso é o `SELECT ... FOR UPDATE` da #5 provando seu valor — em sequência (como eu havia testado antes), qualquer implementação passaria. Também: 20 leituras simultâneas → todas 200.
+- **Lição para as próximas sessões:** rotação de refresh token + estado por aba é uma combinação traiçoeira. Já mordeu duas vezes (StrictMode na #10, multi-aba aqui). Qualquer novo fluxo que chame `/auth/refresh` deve passar por `renovarSessao()`.
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.

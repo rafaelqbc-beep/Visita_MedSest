@@ -4,7 +4,7 @@ import axios, {
   type AxiosRequestConfig,
   type InternalAxiosRequestConfig,
 } from 'axios'
-import type { ApiError } from '@/types'
+import type { ApiError, Usuario } from '@/types'
 
 /**
  * Cliente HTTP da aplicação.
@@ -18,8 +18,7 @@ export const api: AxiosInstance = axios.create({
 })
 
 // O access token fica só em memória — em localStorage ficaria exposto a XSS.
-// Isso significa que um F5 perde o token, e a sessão é retomada pelo refresh
-// (ver `restaurarSessao` no authService).
+// Isso significa que um F5 perde o token, e a sessão é retomada pelo refresh.
 let accessToken: string | null = null
 
 export function setAccessToken(token: string | null): void {
@@ -45,16 +44,28 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config
 })
 
-// --- Renovação de token ---
+// ===========================================================================
+// Renovação de token
+// ===========================================================================
 //
-// O backend ROTACIONA o refresh token: cada /refresh invalida o anterior. Se
-// cinco requisições tomarem 401 ao mesmo tempo e cada uma disparar seu próprio
-// refresh, a primeira invalida o token das outras quatro e o usuário cai fora.
+// O backend ROTACIONA o refresh token: cada /refresh invalida o anterior. Duas
+// chamadas simultâneas com o mesmo token = a segunda encontra um token que já
+// não existe, e a sessão morre. Por isso há DUAS camadas de proteção:
 //
-// Por isso só existe um refresh em andamento por vez: as demais requisições
-// aguardam a mesma promise e depois são refeitas com o token novo.
-let refreshEmAndamento: Promise<string> | null = null
+//   1. Dentro da aba  — uma promise compartilhada, para N requisições que
+//      tomam 401 juntas dispararem um refresh só.
+//   2. Entre abas     — Web Locks. O cookie é compartilhado pelo navegador,
+//      então duas abas abrindo ao mesmo tempo mandariam o mesmo token e uma
+//      seria deslogada (verificado: com 3 abas, uma caía). O lock serializa;
+//      como o cookie é lido na hora do request, a segunda aba já usa o token
+//      novo que a primeira acabou de receber.
 
+interface RespostaRefresh {
+  access_token: string
+  usuario: Usuario
+}
+
+const NOME_LOCK = 'medsest:refresh'
 const ROTA_REFRESH = '/auth/refresh'
 
 // Rotas em que um 401 NÃO significa "token expirado" e renovar não faz sentido:
@@ -63,20 +74,40 @@ const ROTA_REFRESH = '/auth/refresh'
 // como qualquer outra e deve poder se recuperar de um token expirado.
 const SEM_RETENTATIVA = ['/auth/login', '/auth/refresh', '/auth/logout']
 
-/** Marca a requisição para não entrar em loop de retentativa. */
-interface ConfigComRetry extends AxiosRequestConfig {
-  _jaTentouRefresh?: boolean
-}
+let refreshEmAndamento: Promise<RespostaRefresh> | null = null
 
-async function renovarToken(): Promise<string> {
+async function chamarRefresh(): Promise<RespostaRefresh> {
   // `axios` puro, não a instância `api`: o interceptor de resposta dela
   // reagiria ao 401 do próprio refresh e entraria em recursão.
-  const { data } = await axios.post<{ access_token: string }>(
+  const { data } = await axios.post<RespostaRefresh>(
     `${api.defaults.baseURL}${ROTA_REFRESH}`,
     {},
     { withCredentials: true },
   )
-  return data.access_token
+  setAccessToken(data.access_token)
+  return data
+}
+
+/** Serializa entre abas. Sem Web Locks (navegador antigo), roda direto. */
+async function comLockEntreAbas<T>(tarefa: () => Promise<T>): Promise<T> {
+  if (typeof navigator === 'undefined' || !navigator.locks) return tarefa()
+  return (await navigator.locks.request(NOME_LOCK, tarefa)) as T
+}
+
+/**
+ * Renova a sessão pelo cookie de refresh. Seguro para chamadas concorrentes,
+ * dentro da mesma aba e entre abas.
+ */
+export function renovarSessao(): Promise<RespostaRefresh> {
+  refreshEmAndamento ??= comLockEntreAbas(chamarRefresh).finally(() => {
+    refreshEmAndamento = null
+  })
+  return refreshEmAndamento
+}
+
+/** Marca a requisição para não entrar em loop de retentativa. */
+interface ConfigComRetry extends AxiosRequestConfig {
+  _jaTentouRefresh?: boolean
 }
 
 api.interceptors.response.use(
@@ -97,14 +128,8 @@ api.interceptors.response.use(
     original._jaTentouRefresh = true
 
     try {
-      // Quem chegar durante um refresh em andamento espera o mesmo resultado.
-      refreshEmAndamento ??= renovarToken().finally(() => {
-        refreshEmAndamento = null
-      })
-      const novoToken = await refreshEmAndamento
-
-      setAccessToken(novoToken)
-      original.headers = { ...original.headers, Authorization: `Bearer ${novoToken}` }
+      const { access_token } = await renovarSessao()
+      original.headers = { ...original.headers, Authorization: `Bearer ${access_token}` }
       return api(original)
     } catch (falhaNoRefresh) {
       // Refresh token expirado ou revogado: não há como recuperar a sessão.
