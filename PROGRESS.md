@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-15
-**Sessão atual:** #10
+**Sessão atual:** #11
 **Status:** Em desenvolvimento
 
 ---
@@ -65,7 +65,7 @@ rastreabilidade que o e-mail dava antes.
 - [x] Design system + componentes base (tokens + Tailwind config)
 - [x] Identidade visual: logo, símbolo vetorial, favicon e ícones do PWA
 - [x] Autenticação (login, contexto, interceptor de refresh, rotas protegidas)
-- [ ] Layout (Sidebar, Header, rotas por role)
+- [x] Layout (Sidebar com drawer, Header, rotas por role, indicador de conexão)
 - [ ] Dashboard
 - [ ] Gestão de chamados (gestor)
 - [ ] Módulo de visita tablet + offline/IndexedDB
@@ -82,13 +82,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #10 — autenticação do frontend concluída. Nada em aberto ao encerrar._
+_Sessão #11 — layout concluído. Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida:
-11. Frontend: layout (Sidebar, Header, rotas por role)
 12. Frontend: dashboard (Recharts)
 13. Frontend: gestão de chamados (gestor)
 14. Frontend: módulo de visita tablet + offline/IndexedDB
@@ -249,6 +248,19 @@ Ordem sugerida:
 - **Como testar frontend aqui:** `npx playwright` num diretório temporário (`%TEMP%`), fora do projeto. Para exercitar o interceptor de dentro do navegador: `await import('/src/services/api.ts')` no `page.evaluate` — `fetch()` puro não passa pelo axios nem manda o `Authorization`, e não testa nada.
 - **Erros de teste que me custaram tempo (para não repetir):** `getByText('ADMIN')` casa com "admin@..." e "Administrador" → usar `{ exact: true }`; e imprimir `r.text` de resposta binária quebra o console cp1252.
 
+**Sessão #11 (2026-07-16) — Layout:**
+- **`lib/navegacao.ts` é a fonte única da navegação:** alimenta o menu da sidebar **e** as permissões das rotas no `App.tsx`. Com duas listas, um item sumiria do menu mas a URL continuaria acessível — ou o contrário. Também tem `rotaInicial(role)` (cada perfil cai no primeiro item do menu dele) e `ROTULO_ROLE` (traduz `TECNICO_EXTERNO` → "Técnico Externo").
+- **Menu por perfil:** ADMIN (Dashboard, Chamados, Relatórios, Clientes, Usuários, Unidades) · GESTOR (Dashboard, Chamados, Clientes) · TECNICO_EXTERNO (Dashboard, Minhas visitas) · TECNICO_INTERNO (Dashboard, Relatórios). Espelha o escopo do backend.
+- **`Sidebar`**: fixa no desktop (`lg`), drawer com overlay abaixo disso. Fecha por Esc, clique no overlay ou ao navegar. **Usa `simbolo-medsest.svg` + texto branco**, não o logo completo — o "Med" do logo é azul-marinho e sumiria no fundo `#1A3A5C` (decisão da #9b). Mostra nome e perfil do usuário no rodapé: em campo, com tablets compartilhados, isso evita registro no nome errado.
+- **`Header`**: botão de menu (só abaixo de `lg`), `OfflineIndicator`, nome do usuário e sair.
+- **`hooks/useOnlineStatus`** + **`OfflineIndicator`**: verde "Online" / âmbar "Offline — dados salvos localmente". ⚠️ `navigator.onLine` só garante interface de rede ativa — um tablet num Wi-Fi sem internet aparece como online. Para o indicador basta; **a sessão #14 deve confirmar com uma chamada real antes de sincronizar**.
+- **`AppLayout`** com `<Outlet />`, `key={location.pathname}` no `<main>` (a página remonta ao navegar, evitando estado vazado entre telas). `PageWrapper` padroniza título/descrição/ações.
+- **`StatusBadge` e `TipoVisitaBadge`** criados com as cores do design system (o StatusBadge só tem os 4 status atuais — os de validação por e-mail não existem mais).
+- `EmBreve.tsx`: placeholder das telas, com a sessão prevista de cada uma. Some conforme forem entregues.
+- **Validado com E2E (Playwright): 42/42 checagens.** O mais importante: **17 checagens de rota bloqueada** — cada perfil tentou abrir pela URL tudo que o menu esconde dele, e todas caíram em `/sem-permissao`. Menu escondido não é segurança. Também: rota inicial por perfil, item ativo destacado, F5 mantendo rota+layout, drawer (abre, Esc fecha, navegar fecha), **touch targets de 44px** no tablet, e o indicador reagindo a `setOffline`.
+- **⚠️ Artefato de ferramenta (não é bug):** no screenshot do Playwright com `isMobile: true`, o header `sticky` **aparece duplicado**. Verifiquei o DOM: `1 header, 1 botão Sair, top: 0`. É a captura do Chromium em emulação mobile, não o app. **Não tente "consertar"** — se aparecer de novo, cheque o DOM antes.
+- **Erro de teste recorrente:** `getByText('Online')` casa 2× — o `OfflineIndicator` tem versão curta (mobile) e longa (desktop), uma escondida por CSS. Usar `.first()`.
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
@@ -279,14 +291,15 @@ gestor abre chamado (round-robin atribui o tecnico interno)
 cargos · fotos · dashboard · exportação. Tudo com escopo por perfil e erros
 `{detail, code}`. Explorar em `/docs`.
 
-**Para a próxima sessão (#11) — layout:**
-- **Sidebar** (240px no desktop, drawer no tablet): fundo `#1A3A5C`, `simbolo-medsest.svg` + "MedSest Visita" em texto branco no topo (**já validado na Home placeholder do App.tsx** — reaproveitar). Itens de menu **filtrados por role**, usando `temRole()` do `useAuth`:
-  - ADMIN: tudo · GESTOR_COMERCIAL: dashboard, chamados, clientes · TECNICO_EXTERNO: minhas visitas · TECNICO_INTERNO: relatórios
-- **Header:** nome/perfil do usuário, botão sair, e o **indicador de status de conexão** (Online / "Offline — dados salvos localmente"), que a #14 vai usar.
-- `components/layout/{Sidebar,Header,PageWrapper}.tsx` + uma rota-mãe com `<Outlet />` dentro do `ProtectedRoute`.
-- **Substituir a Home placeholder** do `App.tsx` pelo layout de verdade.
-- Já existe: `ProtectedRoute` (aceita `roles=[...]`), `useAuth` (com `temRole`), `Button`/`Input`/`FormField`, e a rota `/sem-permissao`.
-- Login de teste: `admin@medsest.com.br` / `Admin@123` (demais: `Senha@123`).
+**Para a próxima sessão (#12) — dashboard:**
+- Consumir `GET /api/dashboard?unidade_id=&periodo_inicio=&periodo_fim=&tipo_visita=` (7 seções: `kpis`, `por_tipo_visita`, `conversao_novos_clientes`, `chamados_por_status`, `volume_por_mes`, `tempo_medio_por_tecnico`, `carga_tecnicos_internos`). Ver `backend/app/schemas/dashboard.py` para o contrato exato.
+- **Usar React Query** (`@tanstack/react-query` já está no `package.json` e o `QueryClientProvider` já está no `main.tsx`) — criar `services/dashboardService.ts` + um hook.
+- **Gráficos com Recharts** (já instalado): donut de status, barras empilhadas por tipo (volume mensal), barra horizontal (tempo por técnico), pizza/donut da distribuição por tipo.
+- Cards de KPI + filtros (período, tipo de visita, unidade só para ADMIN).
+- ⚠️ **Semântica dos filtros** (já resolvida no backend, ver #8): o período recorta as *análises*; os KPIs operacionais (abertos, visitas do mês, a vencer) ignoram o período de propósito. A pizza e a conversão ignoram o filtro de tipo. **A UI deve deixar isso claro** para o número não parecer errado.
+- Substituir o `EmBreve` de `/dashboard`. Já existem: `PageWrapper`, `StatusBadge`, `TipoVisitaBadge`, `Button`.
+- Cores dos gráficos: usar a paleta do design system (`primary #1A3A5C`, `secondary #2E6DA4`, `brand.green #006C30`) — o prompt pede sóbrio.
+- Login de teste: `admin@medsest.com.br` / `Admin@123` (demais: `Senha@123`). Cada perfil vê números diferentes — vale testar mais de um.
 - Subir os dois: `uvicorn app.main:app` + `npm run dev` (o Vite faz proxy de `/api`).
 
 **Pendências que dependem do usuário:**
