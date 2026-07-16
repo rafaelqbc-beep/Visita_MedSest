@@ -1,6 +1,13 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { AlertCircle, ChevronDown, ClipboardCheck, MapPin, Play } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  ClipboardCheck,
+  MapPin,
+  Play,
+} from 'lucide-react'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import { StatusBadge } from '@/components/StatusBadge'
 import { TipoVisitaBadge } from '@/components/TipoVisitaBadge'
@@ -108,9 +115,14 @@ function CardVisita({
 
 export default function VisitasPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { obter, obtendo } = useGeolocalizacao()
   const [confirmando, setConfirmando] = useState<ChamadoListItem | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+
+  // A visita finalizada some da lista (o escopo do técnico não vê FINALIZADO).
+  // Sem este aviso, o técnico veria a visita sumir e não saberia se deu certo.
+  const finalizou = (location.state as { visitaFinalizada?: boolean } | null)?.visitaFinalizada
 
   // O escopo do backend já limita ao técnico logado; aqui só tiramos os
   // encerrados, que não são trabalho dele.
@@ -168,6 +180,22 @@ export default function VisitasPage() {
 
   return (
     <PageWrapper titulo="Minhas visitas" descricao="Visitas atribuídas a você.">
+      {finalizou && (
+        <div
+          role="status"
+          className="mb-4 flex items-start gap-2 rounded-lg border border-green-200 bg-success-bg p-4"
+        >
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden />
+          <div>
+            <p className="font-medium text-success">Visita finalizada com sucesso.</p>
+            <p className="text-sm text-content-secondary">
+              Os dados foram liberados para a equipe técnica e o cliente recebeu a cópia do
+              relatório assinado. A visita sai da sua fila.
+            </p>
+          </div>
+        </div>
+      )}
+
       {erro && (
         <div
           role="alert"

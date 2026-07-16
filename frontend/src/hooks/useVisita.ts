@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as service from '@/services/visitaService'
+import type { ChamadoListItem } from '@/types/chamado'
 import type {
   Cargo,
   CargoCreate,
@@ -85,4 +86,41 @@ export function useEnviarFoto(chamadoId: string) {
 
 export function useRemoverFoto(chamadoId: string) {
   return useMutacaoDaVisita<string>(chamadoId, service.removerFoto)
+}
+
+// --- Encerramento ---
+// Estes mexem no CHAMADO, não nos setores: atualizam a query do chamado.
+
+function useMutacaoDoChamado<TVars>(
+  chamadoId: string,
+  fn: (vars: TVars) => Promise<ChamadoListItem>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (dados) => {
+      qc.setQueryData(['chamado', chamadoId], dados)
+      void qc.invalidateQueries({ queryKey: ['chamados'] })
+      void qc.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+}
+
+export function useAssinarCliente(chamadoId: string) {
+  return useMutacaoDoChamado<{ arquivo: File; nome: string; cpf: string }>(
+    chamadoId,
+    ({ arquivo, nome, cpf }) => service.assinarCliente(chamadoId, arquivo, nome, cpf),
+  )
+}
+
+export function useAssinarTecnico(chamadoId: string) {
+  return useMutacaoDoChamado<File>(chamadoId, (arquivo) =>
+    service.assinarTecnico(chamadoId, arquivo),
+  )
+}
+
+export function useFinalizarVisita(chamadoId: string) {
+  return useMutacaoDoChamado<Geolocalizacao>(chamadoId, (geo) =>
+    service.finalizarVisita(chamadoId, geo),
+  )
 }

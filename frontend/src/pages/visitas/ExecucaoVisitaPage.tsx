@@ -308,7 +308,6 @@ export default function ExecucaoVisitaPage() {
         )}
       </div>
 
-      {/* Finalizar entra na sessão #15, junto das assinaturas. */}
       {editavel && (
         <div className="mt-6 rounded-xl border border-border bg-surface p-4 shadow-card">
           <h2 className="font-semibold tracking-tightish text-content">Encerrar a visita</h2>
@@ -317,14 +316,23 @@ export default function ExecucaoVisitaPage() {
               ? 'Confira os dados com o cliente e colha as assinaturas.'
               : 'Registre pelo menos um setor com um cargo antes de encerrar.'}
           </p>
-          <Button variante="action" className="mt-4 w-full sm:w-auto" disabled={!podeFinalizar}>
-            <ClipboardCheck className="h-4 w-4" aria-hidden />
-            Conferir e assinar
-          </Button>
-          {!podeFinalizar && (
-            <p className="mt-2 text-sm text-content-secondary">
-              Faltando: {setores.length === 0 ? 'um setor' : 'um cargo em algum setor'}.
-            </p>
+          {podeFinalizar ? (
+            <Link to={`/visitas/${id}/conferencia`}>
+              <Button variante="action" className="mt-4 w-full sm:w-auto">
+                <ClipboardCheck className="h-4 w-4" aria-hidden />
+                Conferir e assinar
+              </Button>
+            </Link>
+          ) : (
+            <>
+              <Button variante="action" className="mt-4 w-full sm:w-auto" disabled>
+                <ClipboardCheck className="h-4 w-4" aria-hidden />
+                Conferir e assinar
+              </Button>
+              <p className="mt-2 text-sm text-content-secondary">
+                Faltando: {setores.length === 0 ? 'um setor' : 'um cargo em algum setor'}.
+              </p>
+            </>
           )}
         </div>
       )}

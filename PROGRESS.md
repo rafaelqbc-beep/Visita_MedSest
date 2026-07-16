@@ -2,7 +2,7 @@
 
 ## Status Geral
 **Última atualização:** 2026-07-15
-**Sessão atual:** #14
+**Sessão atual:** #15
 **Status:** Em desenvolvimento
 
 ---
@@ -70,7 +70,7 @@ rastreabilidade que o e-mail dava antes.
 - [x] Gestão de chamados (lista, novo, detalhe/editar, cancelar)
 - [x] Módulo de visita no tablet: lista, iniciar, setores, cargos, fotos (**online**)
 - [ ] Offline/IndexedDB + sincronização (separado da #14 — ver notas)
-- [ ] Tela de conferência + assinaturas no canvas (cliente e técnico)
+- [x] Tela de conferência + assinaturas no canvas (cliente e técnico) + finalizar
 - [ ] Módulo de relatório (técnico interno)
 - [ ] Cadastros admin
 - [ ] PWA (service worker, manifest) — configurado, **ícones prontos**; faltam as telas
@@ -83,14 +83,13 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #14 — execução da visita (online) concluída. Nada em aberto ao encerrar._
+_Sessão #15 — conferência + assinaturas + finalizar concluídas. **O fluxo de campo está completo.** Nada em aberto ao encerrar._
 
 ---
 
 ## ⏳ Pendente
 Ordem sugerida:
-15. Frontend: tela de conferência + assinaturas no canvas
-16. Frontend: módulo de relatório (técnico interno)
+16. Frontend: módulo de relatório (técnico interno) — **a última peça do ciclo**
 
 > 🎯 **Depois da #16 o ciclo fecha de ponta a ponta** e dá para testar o sistema inteiro no navegador: abrir chamado → visita → assinar → exportar Word. É o momento de validar com a operação antes de investir no resto.
 
@@ -333,6 +332,22 @@ Ordem sugerida:
 - **Validado com E2E no iPad: 33/33** — inclui iniciar com geolocalização **negada**, criar setor/cargo/foto, foto corrompida virando aviso, cascata ao remover setor, Esc não removendo, e F5 mantendo tudo.
 - **Nota de manutenção:** `alembic downgrade base` derruba as tabelas mas **não apaga os arquivos de `uploads/`** — depois de um reset, sobram fotos órfãs em disco. Limpar `uploads/fotos/` na mão (as 4 assinaturas do seed são recriadas pelo `seed.py`).
 
+**Sessão #15 (2026-07-16) — Conferência + assinaturas no canvas:**
+- Arquivos: `pages/visitas/ConferenciaPage.tsx`, `components/CanvasAssinatura.tsx`, `lib/cpf.ts`.
+- **`CanvasAssinatura`** — os três cuidados que fazem funcionar no tablet:
+  - **`devicePixelRatio`**: o canvas é dimensionado em pixels físicos e o contexto recebe `scale(dpr)`. Sem isso o traço sai borrado na tela retina. O `ResizeObserver` só redimensiona quando o tamanho **mudou de fato** — redimensionar limpa o canvas, e um resize apagaria a assinatura pronta.
+  - **`touch-none`**: sem isso o dedo **rola a página** em vez de desenhar.
+  - **`setPointerCapture`**: se o dedo sai do canvas e volta, o traço continua em vez de quebrar em dois.
+  - Um toque simples (ponto) também vale como marca — é o caso de quem não sabe assinar.
+- **`lib/cpf.ts` espelha `utils/validators.py`** (mesmos dígitos verificadores, mesma rejeição de "todos iguais"). O backend valida de novo — é ele quem manda; a cópia existe para o técnico ver o erro **na hora, com o cliente do lado**, em vez de esperar o servidor. Máscara progressiva + `inputMode="numeric"` (teclado numérico no tablet).
+- **Fluxo**: conferir (com atalho "Voltar e corrigir" e um lápis por setor) → cliente assina (nome + CPF) → técnico assina → finalizar. **Checklist de 4 passos** com traço verde mostra o que falta; o botão só habilita completo.
+- **Reassinatura**: "Assinar de novo" reabre o canvas (o backend substitui e apaga a anterior). Traço ruim ou pessoa errada acontece.
+- Depois de finalizar, volta para `/visitas` com **confirmação verde explicando que a visita saiu da fila** — sem isso o técnico veria a visita sumir e não saberia se deu certo.
+- **✅ CORRIGI UMA AFIRMAÇÃO ERRADA MINHA (da nota da #14):** eu havia escrito que "o técnico externo perde o acesso depois de finalizar". **Não perde.** O escopo dele em `services/visita.py` é `tecnico_externo_id == usuario.id`, **sem filtro de status** — só o técnico *interno* é restrito a FINALIZADO. Ele continua abrindo a visita pela URL, em **modo leitura** ("Esta visita não está em andamento..."), o que é bom: reler o que fez é útil. Sai só da *lista* (que filtra PENDENTE/EM_ANDAMENTO). O comentário no código foi corrigido.
+- **Validado com E2E no iPad: 39/39** — **desenha de verdade no canvas** com eventos de ponteiro, valida CPF "todos iguais" no cliente, confere a máscara, assina os dois, finaliza, e **verifica na ponta que a gestão vê "João Silva · 529.982.247-25"**. Também: a visita fica somente-leitura para o técnico depois.
+- **Armadilha de teste (perdi tempo):** `node ... | Out-String` no PowerShell **engole a saída** e a contagem dá zero. Rodar para arquivo (`> resultado.txt 2>&1`) e ler depois.
+- **Nota de manutenção (reforço da #14):** cada assinatura grava um arquivo; o `alembic downgrade` **não apaga `uploads/`**. Depois dos testes, limpar: `uploads/fotos/*` e, em `uploads/assinaturas/`, tudo que **não** começa com `seed-`.
+
 **Decisões técnicas gerais:**
 - Models usam SQLAlchemy 2.0 com `Mapped`/`mapped_column` (estilo declarativo 2.0) e tipos async.
 - Enums do PostgreSQL (`role_enum`, `status_chamado`, etc.) criados via `sqlalchemy.Enum` com `name=` explícito, para bater com o schema SQL do prompt.
@@ -363,7 +378,16 @@ gestor abre chamado (round-robin atribui o tecnico interno)
 cargos · fotos · dashboard · exportação. Tudo com escopo por perfil e erros
 `{detail, code}`. Explorar em `/docs`.
 
-**Para a próxima sessão (#15) — conferência + assinaturas no canvas:** o fecho do fluxo de campo.
+**Para a próxima sessão (#16) — módulo do técnico interno: A ÚLTIMA PEÇA DO CICLO.**
+- `/relatorios` (hoje um `EmBreve`): lista dos chamados atribuídos ao técnico interno. **O escopo do backend já só entrega FINALIZADOS** para esse perfil — não precisa filtrar por status.
+- **Detalhe/visualização**: todos os dados da visita (setores, cargos, fotos, assinaturas com nome/CPF/geoloc). Reusar o layout da `ConferenciaPage`, que já mostra tudo — mas **somente leitura**.
+- **Exportar Word**: `GET /api/chamados/{id}/exportar-word`. ⚠️ Retorna **binário** (`Content-Disposition` com `filename*`), não JSON — usar `responseType: 'blob'` no axios e disparar o download com `URL.createObjectURL`. **Só TECNICO_INTERNO atribuído + ADMIN** (403 para os outros).
+- **`dt_exportacao_word` só é gravado no primeiro download** — a UI pode mostrar "Exportado em ..." e destacar os que ainda não foram (é o KPI de carga do dashboard).
+- Útil: `GET /api/chamados/{id}/recibo-pdf` (o comprovante do cliente) também existe, com a regra de visibilidade normal.
+- Login: `interno.a@medsest.com.br` / `Senha@123` (tem o chamado #3 do seed). Testar também com `interno.c@` (tem o #4, já exportado).
+- Depois desta sessão: **o ciclo fecha** — dá para testar o sistema inteiro no navegador.
+
+**Referência da sessão #15 (conferência/assinaturas) — já concluída:**
 - Na `ExecucaoVisitaPage` o botão **"Conferir e assinar"** já existe e já respeita a regra (só habilita com ≥1 setor e ≥1 cargo) — falta ligá-lo a esta tela.
 - **Tela de conferência**: mostra tudo que foi registrado para o técnico revisar **junto ao cliente**, com atalho para voltar e corrigir.
 - **Assinatura em canvas** (dedo/caneta): `<canvas>` com eventos de ponteiro; exportar com `canvas.toBlob()` → `File` → multipart.

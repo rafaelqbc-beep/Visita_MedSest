@@ -22,6 +22,36 @@ export async function iniciarVisita(
   return data
 }
 
+/** Reassinar substitui a anterior: o backend descarta o arquivo antigo. */
+export async function assinarCliente(
+  chamadoId: string,
+  arquivo: File,
+  nome: string,
+  cpf: string,
+): Promise<ChamadoListItem> {
+  const form = new FormData()
+  form.append('file', arquivo)
+  form.append('nome', nome)
+  form.append('cpf', cpf)
+  const { data } = await api.post<ChamadoListItem>(`/chamados/${chamadoId}/assinatura-cliente`, form)
+  return data
+}
+
+export async function assinarTecnico(chamadoId: string, arquivo: File): Promise<ChamadoListItem> {
+  const form = new FormData()
+  form.append('file', arquivo)
+  const { data } = await api.post<ChamadoListItem>(`/chamados/${chamadoId}/assinatura-tecnico`, form)
+  return data
+}
+
+export async function finalizarVisita(
+  chamadoId: string,
+  geo: Geolocalizacao,
+): Promise<ChamadoListItem> {
+  const { data } = await api.put<ChamadoListItem>(`/chamados/${chamadoId}/finalizar`, geo)
+  return data
+}
+
 // --- Setores ---
 // O GET traz cargos e fotos aninhados: uma chamada monta a tela inteira.
 

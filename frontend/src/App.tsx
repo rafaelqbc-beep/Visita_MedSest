@@ -10,6 +10,7 @@ import ChamadoDetalhePage from '@/pages/chamados/ChamadoDetalhePage'
 import ChamadosPage from '@/pages/chamados/ChamadosPage'
 import NovoChamadoPage from '@/pages/chamados/NovoChamadoPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
+import ConferenciaPage from '@/pages/visitas/ConferenciaPage'
 import ExecucaoVisitaPage from '@/pages/visitas/ExecucaoVisitaPage'
 import VisitasPage from '@/pages/visitas/VisitasPage'
 import { EmBreve } from '@/pages/EmBreve'
@@ -73,6 +74,7 @@ export default function App() {
               <Route element={<ProtectedRoute roles={['TECNICO_EXTERNO']} />}>
                 <Route path="/visitas" element={<VisitasPage />} />
                 <Route path="/visitas/:id" element={<ExecucaoVisitaPage />} />
+                <Route path="/visitas/:id/conferencia" element={<ConferenciaPage />} />
               </Route>
 
               {PAGINAS.map(({ para, titulo, sessao, roles }) => (
