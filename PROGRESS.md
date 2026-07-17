@@ -84,15 +84,27 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #17 — **preparação da validação com a operação** (técnico interno + diretoria).
-Nenhum código de produto escrito de propósito: o ciclo está testável e o feedback
-vale mais que tela nova. Roteiro em [DEMO.md](DEMO.md). **Próxima sessão começa pelas
-respostas da demo**, não pela lista de pendentes._
+_Sessão #17 — **passo atrás no modelo de dados.** A operação confirmou, antes mesmo da
+demo, que o modelo é raso demais para PGR (era o achado da preparação). O catálogo de
+riscos e EPIs está redigido em [CATALOGO_RISCOS.md](CATALOGO_RISCOS.md) **aguardando
+revisão do técnico interno**. Nada foi codado ainda — de propósito: a lista aprovada é
+que define a migration. Roteiro da demo continua em [DEMO.md](DEMO.md)._
 
 ---
 
 ## ⏳ Pendente
-Ordem sugerida:
+
+> 🔴 **A ORDEM ABAIXO ESTÁ SUSPENSA (17/07).** A operação sinalizou que faltam campos
+> para o PGR — riscos, EPIs, nº de trabalhadores, jornada, medições e máquinas. Isso
+> mexe em migration + tela de campo + Word + PDF, e **passa na frente** dos itens
+> 17–20: qualquer tela construída antes é candidata a retrabalho. A nova ordem:
+>
+> **A.** Revisão do [CATALOGO_RISCOS.md](CATALOGO_RISCOS.md) pelo técnico interno ← *estamos aqui*
+> **B.** Backend: migration 0004 + catálogo + schemas + routers + Word/PDF
+> **C.** Frontend: formulário de campo (a parte delicada), conferência e relatório
+> **D.** Aí sim retomar 17–20.
+
+Ordem original (retomar depois de A–C):
 
 > 🎯 **O ciclo está fechado (#16).** Testado de ponta a ponta no navegador: gestor abre
 > o chamado → round-robin atribui o técnico interno → técnico externo faz a visita no
@@ -153,6 +165,48 @@ Ordem sugerida:
   banco confere com o `seed.py`.
 - Smoke pós-reset: **4/4 perfis** logam e o escopo bate (admin/gestor veem 5, Ana 3,
   Interno B **0**).
+
+**Sessão #17b (2026-07-17) — PASSO ATRÁS: campos de PGR (decisões do modelo):**
+- **A operação confirmou o achado antes da demo:** faltam campos. Pedido deles: marcar
+  se **há risco ou não**; havendo, texto livre **ou** opções de marcação. Para EPIs,
+  selecionar quais **ou** texto livre.
+- **Decisão: os dois, não "ou".** Marcação de lista **+** campo "outros" em texto livre.
+  Só texto livre reproduz o problema atual (o técnico interno garimpa prosa e nada vira
+  filtro/contagem); só lista fechada trava no primeiro caso não previsto, com o técnico
+  em campo e o cliente do lado. O que aparecer muito no "outros" vira item da lista.
+- **Riscos e EPIs ficam no CARGO** (escolha do usuário): a exposição é da função, não do
+  ambiente. Medições e máquinas ficam no **SETOR** (é ambiente).
+- **Medições no setor, não no cargo** — numa visita de reconhecimento o técnico mede o
+  ponto. Dosimetria por trabalhador é estudo de 8h, à parte; não é walk-through.
+- **🔑 A CATEGORIA DO RISCO NÃO É GRAVADA — É DERIVADA.** Cada agente pertence a
+  exatamente uma categoria (ruído é sempre físico). Gravar as duas permitiria a linha
+  contraditória "ruído / ergonômico". Grava-se o agente; a categoria vem do catálogo na
+  exibição. Bug impossível por construção.
+- **🔑 CÓDIGOS COMO `texto[]`, NUNCA `ENUM` do Postgres.** O PG não remove valor de enum
+  — mudar a lista viraria o ritual renomear/criar/`ALTER ... USING`/dropar da migration
+  `0002`. Como texto validado na camada da aplicação, mudar a lista é editar a lista. O
+  usuário quer a lista **fixa no código agora e editável pelo admin depois**: com texto,
+  esse dia custa só acrescentar a tabela de catálogo ao lado — **os dados já gravados
+  continuam válidos, sem migration de conversão**.
+- **`possui_riscos` é campo próprio, não inferido da lista vazia.** Lista vazia não
+  distingue "verificou e não há" de "não preencheu". Para o PGR **declarar a ausência é
+  uma afirmação**. Três estados: null (não informado) / false / true. **Idem
+  `utiliza_epis`** (decisão do usuário: simétrico — "não usa EPI" é achado relevante).
+- **Campos definidos:** cargo ganha `num_trabalhadores`, `jornada`, `possui_riscos`,
+  `riscos[]`, `riscos_outros`, `utiliza_epis`, `epis[]`, `epis_outros`. Setor ganha
+  `maquinas`, `ruido_db`, `calor_ibutg`, `iluminancia_lux`.
+- **Catálogo redigido para revisão** em `CATALOGO_RISCOS.md`: 41 agentes em 5 categorias
+  + 25 EPIs em 9 grupos. **Não virou código ainda de propósito** — quem aprova é o
+  técnico interno, que é quem vai conviver com a lista. Dúvidas anotadas lá: nível de
+  detalhe da luva, se `QUEDA_*`/`PERFUROCORTANTE` valem fora da tabela clássica, e as
+  unidades (dB(A) / IBUTG / lux).
+- **Quando virar código:** seguir o padrão do `ROTULO_TIPO_VISITA` (`models/enums.py`) —
+  código → rótulo, fonte única para tela + Word + PDF, **com o teste que garante rótulo
+  para todo código** (sem ele um `KeyError` derruba a exportação; já aconteceu na #16).
+- **Atenção para a sessão do frontend:** o formulário de campo é a parte delicada. São
+  ~41 riscos + 25 EPIs numa tela usada **em pé, num tablet, com o cliente esperando** —
+  categoria em acordeão, não 66 caixas de uma vez. É o que mais precisa do olhar da
+  operação antes de considerar pronto.
 
 **Sessão #16:**
 - **`<select>` não-controlado + opções de outra query = valor perdido.** Ver o bug #1
