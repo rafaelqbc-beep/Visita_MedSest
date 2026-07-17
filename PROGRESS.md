@@ -1,9 +1,10 @@
 # MedSest Visita — Progresso do Desenvolvimento
 
 ## Status Geral
-**Última atualização:** 2026-07-16
-**Sessão atual:** #16
-**Status:** 🎉 **CICLO COMPLETO FUNCIONANDO** — dá para testar o sistema inteiro no navegador
+**Última atualização:** 2026-07-17
+**Sessão atual:** #17
+**Status:** 🎯 **EM VALIDAÇÃO COM A OPERAÇÃO** — ciclo completo funcionando; o roteiro
+da demo está em [DEMO.md](DEMO.md). Nenhuma tela nova até o feedback chegar.
 
 ---
 
@@ -83,7 +84,10 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #16 — módulo de relatório concluído. **O ciclo fecha de ponta a ponta.** Nada em aberto ao encerrar._
+_Sessão #17 — **preparação da validação com a operação** (técnico interno + diretoria).
+Nenhum código de produto escrito de propósito: o ciclo está testável e o feedback
+vale mais que tela nova. Roteiro em [DEMO.md](DEMO.md). **Próxima sessão começa pelas
+respostas da demo**, não pela lista de pendentes._
 
 ---
 
@@ -107,6 +111,48 @@ Ordem sugerida:
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #17 (2026-07-17) — preparação da validação com a operação:**
+- **Decisão do usuário:** validar o ciclo com a operação **antes** de codar a #17
+  (cadastros admin). A demo é ao vivo, na máquina de dev, com os dados **digitados
+  na hora junto com eles**. Plateia: **técnico interno (PGR) + diretoria**. Por isso
+  não se montou `seed_demo.py` — os dados vêm da própria reunião.
+- **🔍 O ACHADO QUE PODE MUDAR O ESCOPO — o modelo de dados pode ser raso demais
+  para PGR.** Hoje se captura: setor = `nome` + `descricao_ambiente` (texto livre);
+  cargo = `nome_cargo` + `descricao_funcao` (texto livre); foto = `descricao`.
+  **Não existe campo estruturado** para nº de trabalhadores por cargo, jornada,
+  riscos por categoria (físico/químico/biológico/ergonômico/acidente), EPIs,
+  medições (ruído/calor/iluminância) ou máquinas. Se o técnico interno precisar
+  disso, hoje ele garimpa no texto livre ou pergunta de volta ao campo.
+  **É a pergunta central da demo** (lista completa em DEMO.md). Campo novo mexe em
+  migration + tela de campo + Word + PDF — descobrir agora é muito mais barato que
+  depois das telas #17–#19.
+- **⚠️ O `.docx` do seed é enganosamente pobre.** Os únicos FINALIZADOS (#3 e #4) têm
+  **1 setor, 1 cargo e ZERO fotos** — o `.docx` do #3 sai com 37,3 KB e 2 imagens,
+  que são só as assinaturas. O `.docx` de 54 KB validado na #16 veio dos dados do
+  teste E2E, que foram apagados depois. **Nunca demonstrar o documento com dado de
+  seed** — a plateia julgaria o sistema pelo dado de brinquedo.
+- **⚠️ Dois perfis no mesmo navegador = troca de identidade silenciosa.** O refresh
+  token é **um cookie por origem** (`refresh_token`). Logar como Ana numa segunda aba
+  sobrescreve o cookie do gestor; a aba do gestor sobrevive ~30min com o access token
+  em memória e, ao renovar, **vira a Ana**. Não é regressão — é consequência do
+  cookie ser do navegador, não da aba (a #11b resolveu a corrida entre abas do
+  *mesmo* usuário, que é outro problema). **Numa demo: uma janela por perfil.**
+  Se a operação pedir multi-perfil simultâneo de verdade, aí sim vira trabalho.
+- **⚠️ `capture="environment"` não abre câmera no desktop** (`FotosSetor.tsx:72`):
+  em notebook o Chrome ignora o atributo e abre o seletor de arquivos. Não é bug (o
+  alvo é tablet), mas quebra a expectativa numa demo em notebook — ter fotos numa
+  pasta.
+- **Banco resetado ao estado do seed** (`downgrade base` → `upgrade head` → `seed.py`):
+  havia sobrado o **chamado #6** dos testes da #16. As 3 migrations rodam nos dois
+  sentidos sem erro. `uploads/` limpo (só as 4 assinaturas `seed-*`). Round-robin com
+  último = **Interno A**, então o próximo chamado criado cai no **Interno B** — cuja
+  fila está **vazia**, o que dá a melhor cena da demo (o relatório aparece sozinho).
+- **Nota:** o "5 setores / 5 cargos" registrado na #1 está desatualizado — o seed
+  reestruturado da #4 cria **4 setores e 4 cargos**, e nenhuma foto. O que está no
+  banco confere com o `seed.py`.
+- Smoke pós-reset: **4/4 perfis** logam e o escopo bate (admin/gestor veem 5, Ana 3,
+  Interno B **0**).
 
 **Sessão #16:**
 - **`<select>` não-controlado + opções de outra query = valor perdido.** Ver o bug #1
@@ -437,7 +483,17 @@ assinaturas viram 1 arquivo em `word/media/` porque o teste desenhou o mesmo rab
 nos dois canvas e o python-docx deduplica bytes idênticos — 3 `inline_shapes`, tudo
 certo.
 
-**Para a próxima sessão (#17) — cadastros admin (clientes, usuários, unidades).**
+**Para a próxima sessão (#18) — começar pelas respostas da demo.**
+- **Primeiro:** registrar aqui o que o técnico interno e a diretoria disseram. Se a
+  resposta foi "faltam campos" (ver o achado do modelo raso, na #17), isso **vira a
+  prioridade** e passa na frente de cadastros/offline/PWA — mexe em migration, tela
+  de campo, Word e PDF, e cada tela nova construída antes é retrabalho.
+- Se o feedback for "o documento serve", aí sim seguir a ordem: #17 cadastros admin →
+  #18 offline → #19 PWA → #20 deploy.
+- O banco foi resetado em 17/07; se a demo rodou, ele tem os dados dela. Resetar
+  antes de rodar os testes E2E (eles conferem números exatos contra o seed).
+
+**Referência — cadastros admin (clientes, usuários, unidades), quando for a hora:**
 - É CRUD, sem o suspense das anteriores: a API já existe (`/api/clientes`,
   `/api/usuarios`, `/api/unidades`) com escopo por perfil e `{detail, code}`.
 - As três telas hoje são `EmBreve` no array `PAGINAS` do `App.tsx` — tirar de lá e
