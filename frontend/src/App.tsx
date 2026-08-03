@@ -12,6 +12,7 @@ import NovoChamadoPage from '@/pages/chamados/NovoChamadoPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
 import RelatorioDetalhePage from '@/pages/relatorios/RelatorioDetalhePage'
 import RelatoriosPage from '@/pages/relatorios/RelatoriosPage'
+import CargoEditorPage from '@/pages/visitas/CargoEditorPage'
 import ConferenciaPage from '@/pages/visitas/ConferenciaPage'
 import ExecucaoVisitaPage from '@/pages/visitas/ExecucaoVisitaPage'
 import VisitasPage from '@/pages/visitas/VisitasPage'
@@ -75,6 +76,14 @@ export default function App() {
               <Route element={<ProtectedRoute roles={['TECNICO_EXTERNO']} />}>
                 <Route path="/visitas" element={<VisitasPage />} />
                 <Route path="/visitas/:id" element={<ExecucaoVisitaPage />} />
+                <Route
+                  path="/visitas/:id/setores/:setorId/cargos/novo"
+                  element={<CargoEditorPage />}
+                />
+                <Route
+                  path="/visitas/:id/setores/:setorId/cargos/:cargoId"
+                  element={<CargoEditorPage />}
+                />
                 <Route path="/visitas/:id/conferencia" element={<ConferenciaPage />} />
               </Route>
 

@@ -2,10 +2,11 @@
 
 ## Status Geral
 **Última atualização:** 2026-08-03
-**Sessão atual:** #18
-**Status:** 🧱 **BACKEND DOS CAMPOS DE PGR PRONTO** — riscos, EPIs, medições, nº de
-trabalhadores, jornada e máquinas gravam, validam e saem no Word/PDF. **Falta o
-frontend** (formulário de campo, conferência e relatório). Migration 0004 aplicada.
+**Sessão atual:** #18b
+**Status:** 🧱 **CAMPOS DE PGR: BACKEND + FORMULÁRIO DE CAMPO PRONTOS** — o técnico já
+registra riscos (acordeão), EPIs, medições, nº de trabalhadores e jornada no tablet.
+**Falta ligar nas telas de leitura:** conferência (o cliente revisar antes de assinar)
+e relatório do técnico interno. Migration 0004 aplicada; 19/19 no E2E de iPad.
 
 ---
 
@@ -85,11 +86,10 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #18 — **backend dos campos de PGR entregue.** A operação aprovou o catálogo
-como versão inicial ("ajustamos com o tempo"). Migration 0004 + `models/catalogo.py` +
-schemas com validação + Word/PDF + endpoint `/api/catalogo` + seed enriquecido. 18/18
-no smoke (Word e PDF gerados de verdade e inspecionados). **Próximo: o frontend** —
-formulário de campo (a parte delicada), conferência e a leitura no relatório._
+_Sessão #18b — **formulário de campo dos campos de PGR entregue.** O técnico registra
+riscos/EPIs/medições no tablet. Decisões de UX (com o usuário): tela dedicada por cargo,
+acordeão por categoria. 19/19 no E2E de iPad. **Próximo: conferência + relatório** —
+mostrar riscos/EPIs/medições ao cliente antes de assinar e ao técnico interno na leitura._
 
 ---
 
@@ -102,7 +102,7 @@ formulário de campo (a parte delicada), conferência e a leitura no relatório.
 >
 > **A.** ~~Revisão do CATALOGO_RISCOS.md~~ ✅ operação aprovou como versão inicial (#18)
 > **B.** ~~Backend: migration 0004 + catálogo + schemas + Word/PDF~~ ✅ feito (#18)
-> **C.** Frontend: formulário de campo (a parte delicada), conferência e relatório ← *próximo*
+> **C.** Frontend: ~~formulário de campo~~ ✅ (#18b) · conferência + relatório ← *próximo*
 > **D.** Aí sim retomar 17–20.
 
 Ordem original (retomar depois de A–C):
@@ -124,6 +124,50 @@ Ordem original (retomar depois de A–C):
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #18b (2026-08-03) — Frontend: formulário de campo dos campos de PGR:**
+- **Decisões de UX tomadas com o usuário** (era o ponto "decidir junto" da #18): (1)
+  **tela dedicada por cargo** — tocar num cargo abre uma página cheia só dele, não um
+  painel inline; o cargo ficou grande demais (dados + 41 riscos + 26 EPIs) para caber
+  num acordeão dentro do card. (2) **Acordeão por categoria** — riscos nas 5 categorias,
+  EPIs por região do corpo; cada grupo abre/fecha com badge de quantos marcados. Nunca
+  67 caixas de uma vez. (3) Escopo: **só o formulário de campo** nesta sessão.
+- **Arquivos novos:** `components/AcordeaoSelecao.tsx` (multi-seleção genérica, reusada
+  por riscos e EPIs), `pages/visitas/CargoEditorPage.tsx` (tela dedicada, rota
+  `/visitas/:id/setores/:setorId/cargos/{novo,:cargoId}`), `pages/visitas/SetorForm.tsx`
+  (criar+editar setor, com máquinas e as 3 medições), `services/catalogoService.ts`,
+  `hooks/useCatalogo.ts` (React Query com `staleTime: Infinity` — o catálogo é estático).
+- **Mudanças:** `CargosSetor.tsx` deixou de ter form inline e virou **lista que navega**
+  para o editor (tocar = editar, lixeira = remover) — o **cargo agora é editável**, o que
+  antes não era (o `PUT /cargos` e o `useAtualizarCargo` já existiam, sem uso).
+  `ExecucaoVisitaPage` ganhou edição de setor (lápis no card) e exibe máquinas/medições.
+- **`possui_riscos`/`utiliza_epis` como segmento Sim/Não** (`SegmentoSimNao`). Ao marcar
+  "Não", o acordeão e o "outros" somem, e **no salvar a lista é zerada** (`riscos: []`,
+  `riscos_outros: null`) — mantém o banco honesto: "declarou que não há" ≠ "não preencheu".
+- **`AcordeaoSelecao` abre só os grupos que já têm itens marcados** (ao editar, o técnico
+  vê logo o que está selecionado; ao criar, tudo fechado). Alvos de 44px, `<label>` em
+  volta do checkbox (área de toque grande + a11y nativa).
+- **Ao voltar do editor de cargo, o setor reabre** — via `navigate(state:{setorAberto})`
+  lido no `useState` inicial de `abertos` (o `<main key={pathname}>` remonta a página, então
+  o estado de abertos se perde; o state da navegação recompõe).
+- **As medições vêm como STRING do backend** (Decimal serializado → "87.50"). O tipo TS é
+  `string | null`; exibição converte para pt-BR ("87,5 dB(A)"); no envio vira `number`.
+- **Validado: 19/19 no E2E de iPad** (Playwright, viewport iPad gen 7) — abre a execução,
+  medições/máquinas na tela, resumo do cargo, abre o editor com campos preenchidos, riscos
+  já marcados, marca um novo, salva e volta (setor reaberto, resumo atualizado), cria cargo
+  "sem riscos/sem EPI" (acordeão some ao marcar Não), edita o setor (ruído). **Screenshot
+  inspecionado** — layout limpo no tablet. `tsc --noEmit` limpo.
+- **⚠️ Lint quebrado no ambiente (pré-existente, não é desta sessão):** ESLint 9 exige
+  `eslint.config.js` (flat config) e o projeto tem config antiga → `npm run lint` falha na
+  hora de achar config. Não afeta build nem tipos. Fica como dívida (migrar o ESLint).
+- **⚠️ Ainda NÃO aparece na conferência nem no relatório:** o cliente assina sem ver
+  riscos/EPIs/medições na tela de conferência, e o técnico interno não vê na leitura do
+  relatório (só no .docx/PDF exportado). **É o próximo passo (#19)** — ConferenciaPage e
+  RelatorioDetalhePage. Use `useRotulosCatalogo()` (já criado) para traduzir os códigos.
+- **Nota de teste:** o Playwright 1.62 baixou `chromium_headless_shell-1234` (o cache tinha
+  1228). `getByLabel(/senha/i)` casa com o botão "Mostrar senha" → usar
+  `getByRole('textbox',{name:'Senha'})`. SPA não dispara `load` → `waitForURL` trava; usar
+  `waitForFunction` no `location.pathname`.
 
 **Sessão #18 (2026-08-03) — Backend dos campos de PGR:**
 - **Operação aprovou o catálogo como versão inicial** ("usar a mesma lista para

@@ -1,11 +1,9 @@
 import { useState } from 'react'
-import { Plus, Trash2, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Button } from '@/components/ui/Button'
-import { FormField } from '@/components/ui/FormField'
-import { Input } from '@/components/ui/Input'
-import { Textarea } from '@/components/ui/Textarea'
-import { useCriarCargo, useRemoverCargo } from '@/hooks/useVisita'
+import { useRemoverCargo } from '@/hooks/useVisita'
 import { mensagemDeErro } from '@/services/api'
 import type { Cargo } from '@/types/visita'
 
@@ -15,35 +13,26 @@ interface Props {
   cargos: Cargo[]
 }
 
+/** Resumo do cargo na lista: o que foi preenchido, sem abrir o editor. */
+function resumo(cargo: Cargo): string {
+  const partes: string[] = []
+  if (cargo.num_trabalhadores != null) partes.push(`${cargo.num_trabalhadores} trab.`)
+  if (cargo.possui_riscos === false) partes.push('sem riscos')
+  else if (cargo.riscos.length > 0 || cargo.riscos_outros)
+    partes.push(`${cargo.riscos.length + (cargo.riscos_outros ? 1 : 0)} riscos`)
+  if (cargo.utiliza_epis === false) partes.push('sem EPI')
+  else if (cargo.epis.length > 0 || cargo.epis_outros)
+    partes.push(`${cargo.epis.length + (cargo.epis_outros ? 1 : 0)} EPIs`)
+  return partes.join(' · ')
+}
+
 export function CargosSetor({ chamadoId, setorId, cargos }: Props) {
-  const criar = useCriarCargo(chamadoId)
+  const navigate = useNavigate()
   const remover = useRemoverCargo(chamadoId)
-  const [abrindo, setAbrindo] = useState(false)
-  const [nome, setNome] = useState('')
-  const [descricao, setDescricao] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [removendo, setRemovendo] = useState<Cargo | null>(null)
 
-  async function adicionar() {
-    if (!nome.trim()) {
-      setErro('Informe o nome do cargo.')
-      return
-    }
-    setErro(null)
-    try {
-      await criar.mutateAsync({
-        setor_id: setorId,
-        nome_cargo: nome.trim(),
-        descricao_funcao: descricao.trim() || null,
-        ordem: cargos.length,
-      })
-      // Limpa e mantém aberto: o técnico costuma cadastrar vários seguidos.
-      setNome('')
-      setDescricao('')
-    } catch (e) {
-      setErro(mensagemDeErro(e, 'Não foi possível adicionar o cargo.'))
-    }
-  }
+  const base = `/visitas/${chamadoId}/setores/${setorId}/cargos`
 
   async function confirmarRemocao() {
     if (!removendo) return
@@ -63,99 +52,59 @@ export function CargosSetor({ chamadoId, setorId, cargos }: Props) {
           Cargos e funções{' '}
           {cargos.length > 0 && <span className="text-content-secondary">({cargos.length})</span>}
         </h4>
-        {!abrindo && (
-          <Button variante="secondary" onClick={() => setAbrindo(true)}>
-            <Plus className="h-4 w-4" aria-hidden />
-            Adicionar cargo
-          </Button>
-        )}
+        <Button variante="secondary" onClick={() => navigate(`${base}/novo`)}>
+          <Plus className="h-4 w-4" aria-hidden />
+          Adicionar cargo
+        </Button>
       </div>
 
-      {cargos.length === 0 && !abrindo ? (
+      {erro && (
+        <p role="alert" className="mb-2 text-sm text-error">
+          {erro}
+        </p>
+      )}
+
+      {cargos.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-content-secondary">
           Nenhum cargo neste setor.
         </p>
       ) : (
         <ul className="space-y-2">
-          {cargos.map((cargo) => (
-            <li
-              key={cargo.id}
-              className="flex items-start justify-between gap-3 rounded-lg border border-border p-3"
-            >
-              <div className="min-w-0">
-                <p className="font-medium text-content">{cargo.nome_cargo}</p>
-                {cargo.descricao_funcao && (
-                  <p className="mt-0.5 whitespace-pre-wrap text-sm text-content-secondary">
-                    {cargo.descricao_funcao}
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setRemovendo(cargo)}
-                aria-label={`Remover cargo ${cargo.nome_cargo}`}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg
-                  text-content-secondary transition-colors hover:bg-error-bg hover:text-error
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          {cargos.map((cargo) => {
+            const detalhe = resumo(cargo)
+            return (
+              <li
+                key={cargo.id}
+                className="flex items-stretch gap-2 rounded-lg border border-border"
               >
-                <Trash2 className="h-4 w-4" aria-hidden />
-              </button>
-            </li>
-          ))}
+                <button
+                  type="button"
+                  onClick={() => navigate(`${base}/${cargo.id}`)}
+                  className="flex min-h-touch flex-1 items-center gap-3 rounded-l-lg p-3 text-left
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-content">{cargo.nome_cargo}</span>
+                    {detalhe && (
+                      <span className="block truncate text-sm text-content-secondary">{detalhe}</span>
+                    )}
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-content-secondary" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRemovendo(cargo)}
+                  aria-label={`Remover cargo ${cargo.nome_cargo}`}
+                  className="flex w-11 shrink-0 items-center justify-center rounded-r-lg
+                    text-content-secondary transition-colors hover:bg-error-bg hover:text-error
+                    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                </button>
+              </li>
+            )
+          })}
         </ul>
-      )}
-
-      {abrindo && (
-        <div className="mt-3 space-y-3 rounded-lg border border-primary/30 bg-accent/40 p-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-content-label">Novo cargo</p>
-            <button
-              type="button"
-              onClick={() => {
-                setAbrindo(false)
-                setNome('')
-                setDescricao('')
-                setErro(null)
-              }}
-              aria-label="Fechar novo cargo"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-content-secondary
-                hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <X className="h-4 w-4" aria-hidden />
-            </button>
-          </div>
-
-          <FormField label="Cargo" htmlFor={`cargo-nome-${setorId}`}>
-            <Input
-              id={`cargo-nome-${setorId}`}
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              placeholder="Ex.: Operador de prensa"
-              erro={!!erro && !nome.trim()}
-              autoFocus
-            />
-          </FormField>
-
-          <FormField label="Descrição da função" htmlFor={`cargo-desc-${setorId}`}>
-            <Textarea
-              id={`cargo-desc-${setorId}`}
-              rows={3}
-              value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              placeholder="O que a pessoa faz neste setor (opcional)."
-            />
-          </FormField>
-
-          {erro && (
-            <p role="alert" className="text-sm text-error">
-              {erro}
-            </p>
-          )}
-
-          <Button onClick={() => void adicionar()} carregando={criar.isPending} className="w-full">
-            Adicionar cargo
-          </Button>
-        </div>
       )}
 
       <ConfirmDialog

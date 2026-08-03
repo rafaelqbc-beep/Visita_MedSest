@@ -1,44 +1,85 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import {
   AlertCircle,
   ArrowLeft,
   ChevronDown,
   ClipboardCheck,
+  Pencil,
   Plus,
   Trash2,
-  X,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { TipoVisitaBadge } from '@/components/TipoVisitaBadge'
 import { Button } from '@/components/ui/Button'
-import { FormField } from '@/components/ui/FormField'
-import { Input } from '@/components/ui/Input'
-import { Textarea } from '@/components/ui/Textarea'
 import { useChamado } from '@/hooks/useChamados'
-import { useCriarSetor, useRemoverSetor, useSetores } from '@/hooks/useVisita'
+import { useAtualizarSetor, useCriarSetor, useRemoverSetor, useSetores } from '@/hooks/useVisita'
 import { dataHora } from '@/lib/formato'
 import { cn } from '@/lib/utils'
 import { mensagemDeErro } from '@/services/api'
 import { CargosSetor } from '@/pages/visitas/CargosSetor'
 import { FotosSetor } from '@/pages/visitas/FotosSetor'
-import type { SetorDetalhe } from '@/types/visita'
+import { SetorForm } from '@/pages/visitas/SetorForm'
+import type { SetorCampos, SetorDetalhe } from '@/types/visita'
+
+/** '87.50' → '87,5'; null/'' → null. Formata a medição para leitura em pt-BR. */
+function medicaoBr(valor: string | null, unidade: string): string | null {
+  if (valor == null || valor.trim() === '') return null
+  const n = Number(valor)
+  if (Number.isNaN(n)) return null
+  return `${String(n).replace('.', ',')} ${unidade}`
+}
+
+function MedicoesLidas({ setor }: { setor: SetorDetalhe }) {
+  const medicoes = [
+    medicaoBr(setor.ruido_db, 'dB(A)'),
+    medicaoBr(setor.calor_ibutg, '°C IBUTG'),
+    medicaoBr(setor.iluminancia_lux, 'lux'),
+  ].filter(Boolean)
+  if (medicoes.length === 0 && !setor.maquinas) return null
+  return (
+    <div className="space-y-1 text-sm">
+      {setor.maquinas && (
+        <p className="text-content-secondary">
+          <span className="font-medium text-content">Máquinas:</span> {setor.maquinas}
+        </p>
+      )}
+      {medicoes.length > 0 && (
+        <p className="text-content-secondary">
+          <span className="font-medium text-content">Medições:</span> {medicoes.join(' · ')}
+        </p>
+      )}
+    </div>
+  )
+}
 
 function CardSetor({
   setor,
   chamadoId,
   indice,
   aberto,
+  editavel,
+  editando,
+  salvandoEdicao,
   onAlternar,
   onRemover,
+  onEditar,
+  onCancelarEdicao,
+  onSalvarEdicao,
 }: {
   setor: SetorDetalhe
   chamadoId: string
   indice: number
   aberto: boolean
+  editavel: boolean
+  editando: boolean
+  salvandoEdicao: boolean
   onAlternar: () => void
   onRemover: () => void
+  onEditar: () => void
+  onCancelarEdicao: () => void
+  onSalvarEdicao: (campos: SetorCampos) => Promise<void>
 }) {
   return (
     <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-card">
@@ -72,30 +113,61 @@ function CardSetor({
             aria-hidden
           />
         </button>
-        <button
-          type="button"
-          onClick={onRemover}
-          aria-label={`Remover setor ${setor.nome}`}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg
-            text-content-secondary transition-colors hover:bg-error-bg hover:text-error
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <Trash2 className="h-4 w-4" aria-hidden />
-        </button>
+        {editavel && (
+          <button
+            type="button"
+            onClick={onRemover}
+            aria-label={`Remover setor ${setor.nome}`}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg
+              text-content-secondary transition-colors hover:bg-error-bg hover:text-error
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden />
+          </button>
+        )}
       </div>
 
       {aberto && (
         <div className="space-y-5 border-t border-border p-4">
-          {setor.descricao_ambiente && (
-            <div>
-              <h4 className="mb-1 font-medium text-content">Ambiente</h4>
-              <p className="whitespace-pre-wrap text-content-secondary">
-                {setor.descricao_ambiente}
-              </p>
-            </div>
+          {editando ? (
+            <SetorForm
+              inicial={setor}
+              onSalvar={onSalvarEdicao}
+              onCancelar={onCancelarEdicao}
+              carregando={salvandoEdicao}
+              rotuloSalvar="Salvar setor"
+            />
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-2">
+                  {setor.descricao_ambiente && (
+                    <div>
+                      <h4 className="mb-1 font-medium text-content">Ambiente</h4>
+                      <p className="whitespace-pre-wrap text-content-secondary">
+                        {setor.descricao_ambiente}
+                      </p>
+                    </div>
+                  )}
+                  <MedicoesLidas setor={setor} />
+                </div>
+                {editavel && (
+                  <button
+                    type="button"
+                    onClick={onEditar}
+                    aria-label={`Editar dados do setor ${setor.nome}`}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg
+                      text-content-secondary transition-colors hover:bg-accent hover:text-primary
+                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden />
+                  </button>
+                )}
+              </div>
+              <CargosSetor chamadoId={chamadoId} setorId={setor.id} cargos={setor.cargos} />
+              <FotosSetor chamadoId={chamadoId} setorId={setor.id} fotos={setor.fotos} />
+            </>
           )}
-          <CargosSetor chamadoId={chamadoId} setorId={setor.id} cargos={setor.cargos} />
-          <FotosSetor chamadoId={chamadoId} setorId={setor.id} fotos={setor.fotos} />
         </div>
       )}
     </section>
@@ -104,15 +176,20 @@ function CardSetor({
 
 export default function ExecucaoVisitaPage() {
   const { id = '' } = useParams()
+  const location = useLocation()
+  const setorParaAbrir = (location.state as { setorAberto?: string } | null)?.setorAberto
   const { data: chamado, isLoading: carregandoChamado } = useChamado(id)
   const { data: setores = [], isLoading, isError, refetch } = useSetores(id)
   const criarSetor = useCriarSetor(id)
+  const atualizarSetor = useAtualizarSetor(id)
   const removerSetor = useRemoverSetor(id)
 
-  const [abertos, setAbertos] = useState<Set<string>>(new Set())
+  // Ao voltar do editor de cargo, reabre o setor em que se estava.
+  const [abertos, setAbertos] = useState<Set<string>>(
+    () => new Set(setorParaAbrir ? [setorParaAbrir] : []),
+  )
   const [novoAberto, setNovoAberto] = useState(false)
-  const [nome, setNome] = useState('')
-  const [ambiente, setAmbiente] = useState('')
+  const [editandoSetor, setEditandoSetor] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [removendo, setRemovendo] = useState<SetorDetalhe | null>(null)
 
@@ -125,26 +202,25 @@ export default function ExecucaoVisitaPage() {
     })
   }
 
-  async function adicionarSetor() {
-    if (!nome.trim()) {
-      setErro('Informe o nome do setor.')
-      return
-    }
+  async function adicionarSetor(campos: SetorCampos) {
     setErro(null)
     try {
-      const criado = await criarSetor.mutateAsync({
-        chamado_id: id,
-        nome: nome.trim(),
-        descricao_ambiente: ambiente.trim() || null,
-        ordem: setores.length,
-      })
-      setNome('')
-      setAmbiente('')
+      const criado = await criarSetor.mutateAsync({ chamado_id: id, ordem: setores.length, ...campos })
       setNovoAberto(false)
       // Abre o setor recém-criado: o próximo passo é cadastrar os cargos dele.
       if (criado?.id) setAbertos((a) => new Set(a).add(criado.id))
     } catch (e) {
       setErro(mensagemDeErro(e, 'Não foi possível adicionar o setor.'))
+    }
+  }
+
+  async function salvarEdicaoSetor(setorId: string, campos: SetorCampos) {
+    setErro(null)
+    try {
+      await atualizarSetor.mutateAsync({ id: setorId, body: campos })
+      setEditandoSetor(null)
+    } catch (e) {
+      setErro(mensagemDeErro(e, 'Não foi possível salvar o setor.'))
     }
   }
 
@@ -244,8 +320,17 @@ export default function ExecucaoVisitaPage() {
             chamadoId={id}
             indice={i}
             aberto={abertos.has(setor.id)}
+            editavel={editavel}
+            editando={editandoSetor === setor.id}
+            salvandoEdicao={atualizarSetor.isPending}
             onAlternar={() => alternar(setor.id)}
             onRemover={() => setRemovendo(setor)}
+            onEditar={() => {
+              setAbertos((a) => new Set(a).add(setor.id))
+              setEditandoSetor(setor.id)
+            }}
+            onCancelarEdicao={() => setEditandoSetor(null)}
+            onSalvarEdicao={(campos) => salvarEdicaoSetor(setor.id, campos)}
           />
         ))}
 
@@ -258,52 +343,13 @@ export default function ExecucaoVisitaPage() {
 
         {novoAberto && (
           <section className="space-y-3 rounded-xl border border-primary/30 bg-surface p-4 shadow-card">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold tracking-tightish text-content">Novo setor</h2>
-              <button
-                type="button"
-                onClick={() => {
-                  setNovoAberto(false)
-                  setNome('')
-                  setAmbiente('')
-                  setErro(null)
-                }}
-                aria-label="Fechar novo setor"
-                className="flex h-11 w-11 items-center justify-center rounded-lg text-content-secondary
-                  hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <X className="h-4 w-4" aria-hidden />
-              </button>
-            </div>
-
-            <FormField label="Nome do setor" htmlFor="setor-nome">
-              <Input
-                id="setor-nome"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                placeholder="Ex.: Produção, Almoxarifado, Recepção"
-                erro={!!erro && !nome.trim()}
-                autoFocus
-              />
-            </FormField>
-
-            <FormField label="Descrição do ambiente" htmlFor="setor-ambiente">
-              <Textarea
-                id="setor-ambiente"
-                rows={3}
-                value={ambiente}
-                onChange={(e) => setAmbiente(e.target.value)}
-                placeholder="Condições do local: ruído, iluminação, ventilação, riscos (opcional)."
-              />
-            </FormField>
-
-            <Button
-              onClick={() => void adicionarSetor()}
+            <h2 className="font-semibold tracking-tightish text-content">Novo setor</h2>
+            <SetorForm
+              onSalvar={adicionarSetor}
+              onCancelar={() => setNovoAberto(false)}
               carregando={criarSetor.isPending}
-              className="w-full"
-            >
-              Adicionar setor
-            </Button>
+              rotuloSalvar="Adicionar setor"
+            />
           </section>
         )}
       </div>
