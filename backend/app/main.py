@@ -9,6 +9,7 @@ from app.config import settings
 from app.routers import (
     auth,
     cargos,
+    catalogo,
     chamados,
     clientes,
     dashboard,
@@ -72,3 +73,4 @@ app.include_router(cargos.router)
 app.include_router(fotos.router)
 app.include_router(dashboard.router)
 app.include_router(exportacao.router)
+app.include_router(catalogo.router)

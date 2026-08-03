@@ -1,5 +1,6 @@
 """Schemas Pydantic para Setores/Ambientes."""
 import uuid
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -12,12 +13,20 @@ class SetorCreate(BaseModel):
     nome: str
     descricao_ambiente: str | None = None
     ordem: int = 0
+    maquinas: str | None = None
+    ruido_db: Decimal | None = None
+    calor_ibutg: Decimal | None = None
+    iluminancia_lux: Decimal | None = None
 
 
 class SetorUpdate(BaseModel):
     nome: str | None = None
     descricao_ambiente: str | None = None
     ordem: int | None = None
+    maquinas: str | None = None
+    ruido_db: Decimal | None = None
+    calor_ibutg: Decimal | None = None
+    iluminancia_lux: Decimal | None = None
 
 
 class SetorRead(BaseModel):
@@ -28,6 +37,10 @@ class SetorRead(BaseModel):
     nome: str
     descricao_ambiente: str | None = None
     ordem: int
+    maquinas: str | None = None
+    ruido_db: Decimal | None = None
+    calor_ibutg: Decimal | None = None
+    iluminancia_lux: Decimal | None = None
 
 
 class SetorDetalhe(SetorRead):

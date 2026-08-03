@@ -12,6 +12,7 @@ duplicar. Rode em banco limpo.
 import asyncio
 import base64
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import select
@@ -226,18 +227,32 @@ async def seed() -> None:
         setor_admin = Setor(
             chamado_id=ch2.id, nome="Administrativo",
             descricao_ambiente="Escritorio climatizado, iluminacao artificial.", ordem=0,
+            maquinas="Computadores, impressora multifuncional.",
+            ruido_db=Decimal("58.00"), iluminancia_lux=Decimal("480.00"),
         )
         setor_prod = Setor(
             chamado_id=ch2.id, nome="Producao",
             descricao_ambiente="Galpao com maquinas, ruido elevado.", ordem=1,
+            maquinas="Prensa hidraulica, esteira transportadora, compressor.",
+            ruido_db=Decimal("87.50"), calor_ibutg=Decimal("27.30"),
+            iluminancia_lux=Decimal("320.00"),
         )
         db.add_all([setor_admin, setor_prod])
         await db.flush()
         db.add_all([
             Cargo(setor_id=setor_admin.id, nome_cargo="Auxiliar Administrativo",
-                  descricao_funcao="Rotinas de escritorio e atendimento.", ordem=0),
+                  descricao_funcao="Rotinas de escritorio e atendimento.", ordem=0,
+                  num_trabalhadores=4, jornada="44h semanais (08h-18h)",
+                  possui_riscos=True, riscos=["POSTURA_INADEQUADA", "MONOTONIA_REPETITIVIDADE"],
+                  utiliza_epis=False),
             Cargo(setor_id=setor_prod.id, nome_cargo="Operador de Maquinas",
-                  descricao_funcao="Operacao de prensa e esteira.", ordem=0),
+                  descricao_funcao="Operacao de prensa e esteira.", ordem=0,
+                  num_trabalhadores=8, jornada="Turnos de 6h",
+                  possui_riscos=True,
+                  riscos=["RUIDO", "CALOR", "MAQUINA_SEM_PROTECAO", "LEVANTAMENTO_PESO"],
+                  riscos_outros="Contato eventual com oleo lubrificante.",
+                  utiliza_epis=True,
+                  epis=["PROTETOR_AURICULAR_PLUG", "OCULOS", "LUVA", "CALCADO_SEGURANCA"]),
         ])
 
         # --- Chamado 3: FINALIZADO recem-assinado, aguardando exportacao (Novo Cliente) ---
@@ -269,11 +284,17 @@ async def seed() -> None:
         db.add(ch3)
         await db.flush()
         setor_ch3 = Setor(chamado_id=ch3.id, nome="Recepcao",
-                          descricao_ambiente="Area de atendimento ao publico.", ordem=0)
+                          descricao_ambiente="Area de atendimento ao publico.", ordem=0,
+                          maquinas="Computador, telefone, catraca eletronica.",
+                          ruido_db=Decimal("62.00"), iluminancia_lux=Decimal("500.00"))
         db.add(setor_ch3)
         await db.flush()
         db.add(Cargo(setor_id=setor_ch3.id, nome_cargo="Recepcionista",
-                     descricao_funcao="Atendimento e triagem.", ordem=0))
+                     descricao_funcao="Atendimento e triagem.", ordem=0,
+                     num_trabalhadores=2, jornada="44h semanais",
+                     possui_riscos=True,
+                     riscos=["POSTURA_INADEQUADA", "RITMO_EXCESSIVO"],
+                     utiliza_epis=False))
 
         # --- Chamado 4: FINALIZADO e ja exportado em Word (Renovacao) ---
         ch4 = Chamado(
@@ -305,11 +326,18 @@ async def seed() -> None:
         db.add(ch4)
         await db.flush()
         setor_ch4 = Setor(chamado_id=ch4.id, nome="Escritorio Central",
-                          descricao_ambiente="Area administrativa da matriz.", ordem=0)
+                          descricao_ambiente="Area administrativa da matriz.", ordem=0,
+                          maquinas="Estacoes de trabalho, servidor local, no-break.",
+                          ruido_db=Decimal("55.00"), iluminancia_lux=Decimal("510.00"))
         db.add(setor_ch4)
         await db.flush()
         db.add(Cargo(setor_id=setor_ch4.id, nome_cargo="Analista Financeiro",
-                     descricao_funcao="Gestao de contas e conciliacao.", ordem=0))
+                     descricao_funcao="Gestao de contas e conciliacao.", ordem=0,
+                     num_trabalhadores=6, jornada="40h semanais",
+                     possui_riscos=True,
+                     riscos=["POSTURA_INADEQUADA", "MONOTONIA_REPETITIVIDADE", "ESTRESSE"],
+                     riscos_outros="Trabalho sob pressao em fechamento mensal.",
+                     utiliza_epis=False))
 
         # --- Chamado 5: CANCELADO (Visita Tecnica) ---
         ch5 = Chamado(

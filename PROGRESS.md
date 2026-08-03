@@ -1,10 +1,11 @@
 # MedSest Visita — Progresso do Desenvolvimento
 
 ## Status Geral
-**Última atualização:** 2026-07-17
-**Sessão atual:** #17
-**Status:** 🎯 **EM VALIDAÇÃO COM A OPERAÇÃO** — ciclo completo funcionando; o roteiro
-da demo está em [DEMO.md](DEMO.md). Nenhuma tela nova até o feedback chegar.
+**Última atualização:** 2026-08-03
+**Sessão atual:** #18
+**Status:** 🧱 **BACKEND DOS CAMPOS DE PGR PRONTO** — riscos, EPIs, medições, nº de
+trabalhadores, jornada e máquinas gravam, validam e saem no Word/PDF. **Falta o
+frontend** (formulário de campo, conferência e relatório). Migration 0004 aplicada.
 
 ---
 
@@ -84,11 +85,11 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #17 — **passo atrás no modelo de dados.** A operação confirmou, antes mesmo da
-demo, que o modelo é raso demais para PGR (era o achado da preparação). O catálogo de
-riscos e EPIs está redigido em [CATALOGO_RISCOS.md](CATALOGO_RISCOS.md) **aguardando
-revisão do técnico interno**. Nada foi codado ainda — de propósito: a lista aprovada é
-que define a migration. Roteiro da demo continua em [DEMO.md](DEMO.md)._
+_Sessão #18 — **backend dos campos de PGR entregue.** A operação aprovou o catálogo
+como versão inicial ("ajustamos com o tempo"). Migration 0004 + `models/catalogo.py` +
+schemas com validação + Word/PDF + endpoint `/api/catalogo` + seed enriquecido. 18/18
+no smoke (Word e PDF gerados de verdade e inspecionados). **Próximo: o frontend** —
+formulário de campo (a parte delicada), conferência e a leitura no relatório._
 
 ---
 
@@ -99,9 +100,9 @@ que define a migration. Roteiro da demo continua em [DEMO.md](DEMO.md)._
 > mexe em migration + tela de campo + Word + PDF, e **passa na frente** dos itens
 > 17–20: qualquer tela construída antes é candidata a retrabalho. A nova ordem:
 >
-> **A.** Revisão do [CATALOGO_RISCOS.md](CATALOGO_RISCOS.md) pelo técnico interno ← *estamos aqui*
-> **B.** Backend: migration 0004 + catálogo + schemas + routers + Word/PDF
-> **C.** Frontend: formulário de campo (a parte delicada), conferência e relatório
+> **A.** ~~Revisão do CATALOGO_RISCOS.md~~ ✅ operação aprovou como versão inicial (#18)
+> **B.** ~~Backend: migration 0004 + catálogo + schemas + Word/PDF~~ ✅ feito (#18)
+> **C.** Frontend: formulário de campo (a parte delicada), conferência e relatório ← *próximo*
 > **D.** Aí sim retomar 17–20.
 
 Ordem original (retomar depois de A–C):
@@ -123,6 +124,52 @@ Ordem original (retomar depois de A–C):
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #18 (2026-08-03) — Backend dos campos de PGR:**
+- **Operação aprovou o catálogo como versão inicial** ("usar a mesma lista para
+  validação e ir ajustando com o tempo"). Implementado o que estava em
+  `CATALOGO_RISCOS.md`: **41 riscos em 5 categorias + 26 EPIs em 10 grupos** (o
+  rascunho dizia "25 em 9" — erro de contagem meu na redação; o conteúdo das tabelas
+  é o que valia e foi implementado).
+- **`app/models/catalogo.py` é a fonte única** (padrão do `ROTULO_TIPO_VISITA`):
+  `RISCOS` = código → (rótulo, categoria); `EPIS` = código → (rótulo, grupo). Helpers:
+  `rotulo_risco/epi`, `categoria_do_risco`, `codigos_*_invalidos` (validação),
+  `riscos_por_categoria/epis_por_grupo` (endpoint), `riscos_agrupados_do_cargo` e
+  `epis_do_cargo` (Word/PDF). **Mudar a lista é editar estes dicts** — nada de ENUM.
+- **Migration 0004** (round-trip testado): cargo ganhou `num_trabalhadores`, `jornada`,
+  `possui_riscos`, `riscos text[]`, `riscos_outros`, `utiliza_epis`, `epis text[]`,
+  `epis_outros`; setor ganhou `maquinas`, `ruido_db` Numeric(5,2), `calor_ibutg`
+  Numeric(5,2), `iluminancia_lux` Numeric(8,2). Os arrays são `text[]` com
+  `server_default '{}'` e NOT NULL; os booleanos são NULLABLE (3 estados).
+- **Os routers de cargo/setor NÃO mudaram** — já usavam `**body.model_dump()` (create)
+  e `exclude_unset` (update), então os campos novos fluem sozinhos. A validação dos
+  códigos está no **schema** (`field_validator` → `codigos_*_invalidos`) → 422
+  `VALIDATION_ERROR` citando o código inválido. Confirmado no smoke.
+- **Word:** a tabela de cargos virou **um bloco por cargo** (`_bloco_cargo`) — comporta
+  riscos agrupados por categoria, EPIs, nº de trabalhadores e jornada. Ausência
+  declarada aparece como texto ("Nenhum risco identificado (declarado no local)"),
+  diferente de vazio. Setor mostra máquinas e medições ("Ruído: 87.5 dB(A) | ...").
+- **PDF (recibo do cliente):** versão compacta dos mesmos dados — o cliente conferiu e
+  assinou isto no local, então entra no comprovante (uma linha itálica por cargo).
+- **Endpoint `GET /api/catalogo`** (qualquer autenticado): riscos por categoria + EPIs
+  por grupo, na ordem de exibição — é o que o acordeão do frontend vai consumir.
+- **Seed enriquecido:** chamados 2/3/4 agora têm medições, riscos e EPIs reais. **Isso
+  conserta a armadilha da #17** (o `.docx` do seed era enganosamente pobre): agora o
+  Word do #3 sai com riscos, medições e nº de trabalhadores de verdade. Os KPIs/durações
+  do seed NÃO mudaram — só entraram campos nos setores/cargos, então os E2E antigos que
+  conferem números seguem válidos.
+- **Validado: 18/18 no smoke** — catálogo (5 cat/41 agentes/26 EPIs, exige auth),
+  medições e riscos/EPIs gravados e lidos, **código inválido → 422 citando o código**,
+  e o **Word e o PDF gerados de verdade** contêm risco (postura), nº de trabalhadores e
+  medição. Teste-guardião do catálogo passa (todo código tem rótulo, categoria
+  derivada consistente, código órfão cai em "Outros" sem quebrar). Sem lixo no banco.
+  `pip check` limpo (nenhuma dependência nova).
+- **Para o frontend (próxima sessão) — a parte delicada:** o formulário de campo com
+  41 riscos + 26 EPIs é usado **em pé, num tablet, com o cliente esperando**. Consumir
+  `/api/catalogo`, acordeão por categoria/grupo (não 67 caixas de uma vez), o marcador
+  "Há riscos?" / "Utiliza EPI?" controlando a lista, e os campos "outros". Telas:
+  `ExecucaoVisitaPage`/`CargosSetor`/`FotosSetor` (campo), `ConferenciaPage` (revisão) e
+  `RelatorioDetalhePage` (leitura). Os tipos TS em `types/visita.ts` precisam dos campos.
 
 **Sessão #17 (2026-07-17) — preparação da validação com a operação:**
 - **Decisão do usuário:** validar o ciclo com a operação **antes** de codar a #17

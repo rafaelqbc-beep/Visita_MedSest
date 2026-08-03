@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
+from app.models.catalogo import epis_do_cargo, riscos_agrupados_do_cargo
 from app.models.chamado import Chamado
 from app.models.enums import ROTULO_TIPO_VISITA
 from app.models.setor import Setor
@@ -23,6 +24,13 @@ from app.utils.formatacao import coord_br, data_br, dt_br
 AZUL_MEDSEST = RGBColor(0x1A, 0x3A, 0x5C)
 LARGURA_FOTO = Inches(2.6)
 LARGURA_ASSINATURA = Inches(2.2)
+
+
+def _medida(valor, unidade: str) -> str | None:
+    """Formata uma medição (Decimal) como '87 dB(A)', sem zeros à toa. None se vazio."""
+    if valor is None:
+        return None
+    return f"{valor:g} {unidade}"
 
 
 def _arquivo(caminho_relativo: str | None) -> Path | None:
@@ -47,6 +55,65 @@ def _campo(doc: Document, rotulo: str, valor: str) -> None:
     run = p.add_run(f"{rotulo}: ")
     run.bold = True
     p.add_run(valor or "-")
+
+
+def _subcampo(doc: Document, rotulo: str, valor: str) -> None:
+    """Campo recuado, para os detalhes de um cargo."""
+    p = doc.add_paragraph()
+    p.paragraph_format.left_indent = Inches(0.3)
+    p.paragraph_format.space_after = Pt(1)
+    run = p.add_run(f"{rotulo}: ")
+    run.bold = True
+    run.font.size = Pt(10)
+    v = p.add_run(valor or "-")
+    v.font.size = Pt(10)
+
+
+def _bloco_cargo(doc: Document, cargo) -> None:
+    """Renderiza um cargo com todos os campos de PGR: nº de trabalhadores,
+    jornada, riscos (agrupados por categoria) e EPIs."""
+    p = doc.add_paragraph()
+    p.paragraph_format.left_indent = Inches(0.15)
+    p.paragraph_format.space_before = Pt(4)
+    nome = p.add_run(f"• {cargo.nome_cargo}")
+    nome.bold = True
+
+    if cargo.descricao_funcao:
+        _subcampo(doc, "Descrição da função", cargo.descricao_funcao)
+    dados = []
+    if cargo.num_trabalhadores is not None:
+        dados.append(f"Nº de trabalhadores: {cargo.num_trabalhadores}")
+    if cargo.jornada:
+        dados.append(f"Jornada: {cargo.jornada}")
+    if dados:
+        _subcampo(doc, "Dados", "  |  ".join(dados))
+
+    # Riscos: a ausência declarada é uma informação (diferente de não preenchido).
+    if cargo.possui_riscos is False:
+        _subcampo(doc, "Riscos", "Nenhum risco identificado (declarado no local).")
+    else:
+        grupos = riscos_agrupados_do_cargo(cargo.riscos or [])
+        if grupos:
+            p = doc.add_paragraph()
+            p.paragraph_format.left_indent = Inches(0.3)
+            p.paragraph_format.space_after = Pt(1)
+            r = p.add_run("Riscos identificados:")
+            r.bold = True
+            r.font.size = Pt(10)
+            for rotulo_cat, agentes in grupos:
+                _subcampo(doc, f"  {rotulo_cat}", ", ".join(agentes))
+        if cargo.riscos_outros:
+            _subcampo(doc, "  Outros riscos", cargo.riscos_outros)
+
+    # EPIs
+    if cargo.utiliza_epis is False:
+        _subcampo(doc, "EPIs", "Não utiliza EPI (declarado no local).")
+    else:
+        itens = epis_do_cargo(cargo.epis or [])
+        if itens:
+            _subcampo(doc, "EPIs utilizados", ", ".join(itens))
+        if cargo.epis_outros:
+            _subcampo(doc, "  Outros EPIs", cargo.epis_outros)
 
 
 async def gerar_relatorio_word(chamado_id: uuid.UUID, db: AsyncSession) -> tuple[bytes, str]:
@@ -132,24 +199,28 @@ async def gerar_relatorio_word(chamado_id: uuid.UUID, db: AsyncSession) -> tuple
         _titulo(doc, f"{indice}. {setor.nome}", tamanho=13)
         if setor.descricao_ambiente:
             _campo(doc, "Descrição do ambiente", setor.descricao_ambiente)
+        if setor.maquinas:
+            _campo(doc, "Máquinas e equipamentos", setor.maquinas)
 
-        # Cargos em tabela: é como o técnico interno lê no sistema de SST.
+        # Medições ambientais (só as informadas)
+        medicoes = [
+            f"{rotulo}: {texto}"
+            for rotulo, texto in (
+                ("Ruído", _medida(setor.ruido_db, "dB(A)")),
+                ("Calor", _medida(setor.calor_ibutg, "°C (IBUTG)")),
+                ("Iluminância", _medida(setor.iluminancia_lux, "lux")),
+            )
+            if texto
+        ]
+        if medicoes:
+            _campo(doc, "Medições", "  |  ".join(medicoes))
+
+        # Um bloco por cargo: comporta riscos, EPIs e os demais campos de PGR.
         if setor.cargos:
             p = doc.add_paragraph()
             p.add_run("Cargos / Funções").bold = True
-            tabela = doc.add_table(rows=1, cols=2)
-            tabela.style = "Table Grid"
-            cabecalhos = tabela.rows[0].cells
-            cabecalhos[0].text = "Cargo"
-            cabecalhos[1].text = "Descrição da função"
-            for celula in cabecalhos:
-                for par in celula.paragraphs:
-                    for r in par.runs:
-                        r.bold = True
             for cargo in setor.cargos:
-                linha = tabela.add_row().cells
-                linha[0].text = cargo.nome_cargo
-                linha[1].text = cargo.descricao_funcao or "-"
+                _bloco_cargo(doc, cargo)
         else:
             doc.add_paragraph("Nenhum cargo registrado neste setor.")
 

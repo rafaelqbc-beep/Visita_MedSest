@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
+from app.models.catalogo import epis_do_cargo, rotulo_risco
 from app.models.chamado import Chamado
 from app.models.enums import ROTULO_TIPO_VISITA
 from app.models.setor import Setor
@@ -23,6 +24,12 @@ from app.utils.formatacao import coord_br, dt_br, texto_latin1
 AZUL = (0x1A, 0x3A, 0x5C)
 CINZA = (0x6B, 0x72, 0x80)
 MARGEM = 15
+
+
+def _medida(valor, unidade: str) -> str | None:
+    if valor is None:
+        return None
+    return f"{valor:g} {unidade}"
 
 
 class _ReciboPDF(FPDF):
@@ -142,6 +149,29 @@ async def gerar_recibo_pdf(chamado_id: uuid.UUID, db: AsyncSession) -> tuple[byt
             pdf.set_text_color(*CINZA)
             pdf.multi_cell(0, 4, texto_latin1(setor.descricao_ambiente), new_x="LMARGIN", new_y="NEXT")
             pdf.set_text_color(0, 0, 0)
+
+        # Máquinas e medições do ambiente (só o que foi informado)
+        extras_setor = []
+        if setor.maquinas:
+            extras_setor.append(f"Maquinas: {setor.maquinas}")
+        medicoes = [
+            f"{rotulo}: {texto}"
+            for rotulo, texto in (
+                ("Ruido", _medida(setor.ruido_db, "dB(A)")),
+                ("Calor", _medida(setor.calor_ibutg, "C IBUTG")),
+                ("Iluminancia", _medida(setor.iluminancia_lux, "lux")),
+            )
+            if texto
+        ]
+        if medicoes:
+            extras_setor.append("Medicoes: " + " | ".join(medicoes))
+        if extras_setor:
+            pdf.set_font("Helvetica", "", 8)
+            pdf.set_text_color(*CINZA)
+            for linha in extras_setor:
+                pdf.multi_cell(0, 4, texto_latin1(f"   {linha}"), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(0, 0, 0)
+
         pdf.set_font("Helvetica", "", 9)
         for cargo in setor.cargos:
             descricao = f" - {cargo.descricao_funcao}" if cargo.descricao_funcao else ""
@@ -150,6 +180,38 @@ async def gerar_recibo_pdf(chamado_id: uuid.UUID, db: AsyncSession) -> tuple[byt
                 texto_latin1(f"    - {cargo.nome_cargo}{descricao}"),
                 new_x="LMARGIN", new_y="NEXT",
             )
+            # Linha compacta de riscos/EPIs — o cliente conferiu isto no local.
+            detalhes = []
+            if cargo.num_trabalhadores is not None:
+                detalhes.append(f"{cargo.num_trabalhadores} trabalhador(es)")
+            if cargo.jornada:
+                detalhes.append(f"jornada {cargo.jornada}")
+            if cargo.possui_riscos is False:
+                detalhes.append("sem riscos identificados")
+            else:
+                nomes = [rotulo_risco(c) for c in (cargo.riscos or [])]
+                if cargo.riscos_outros:
+                    nomes.append(cargo.riscos_outros)
+                if nomes:
+                    detalhes.append("riscos: " + ", ".join(nomes))
+            if cargo.utiliza_epis is False:
+                detalhes.append("nao utiliza EPI")
+            else:
+                epis = epis_do_cargo(cargo.epis or [])
+                if cargo.epis_outros:
+                    epis.append(cargo.epis_outros)
+                if epis:
+                    detalhes.append("EPIs: " + ", ".join(epis))
+            if detalhes:
+                pdf.set_font("Helvetica", "I", 8)
+                pdf.set_text_color(*CINZA)
+                pdf.multi_cell(
+                    0, 4,
+                    texto_latin1("        " + " | ".join(detalhes)),
+                    new_x="LMARGIN", new_y="NEXT",
+                )
+                pdf.set_text_color(0, 0, 0)
+                pdf.set_font("Helvetica", "", 9)
         pdf.ln(1)
 
     # --- Assinaturas ---
