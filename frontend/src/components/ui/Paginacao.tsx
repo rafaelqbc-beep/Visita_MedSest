@@ -6,13 +6,22 @@ interface Props {
   paginas: number
   total: number
   onMudar: (pagina: number) => void
+  /** [singular, plural] do que está sendo paginado. */
+  substantivo?: [string, string]
 }
 
-export function Paginacao({ pagina, paginas, total, onMudar }: Props) {
+export function Paginacao({
+  pagina,
+  paginas,
+  total,
+  onMudar,
+  substantivo = ['chamado', 'chamados'],
+}: Props) {
+  const [singular, plural] = substantivo
   if (paginas <= 1) {
     return (
       <p className="py-3 text-sm text-content-secondary">
-        {total} {total === 1 ? 'chamado' : 'chamados'}
+        {total} {total === 1 ? singular : plural}
       </p>
     )
   }
@@ -20,7 +29,7 @@ export function Paginacao({ pagina, paginas, total, onMudar }: Props) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 py-3">
       <p className="text-sm text-content-secondary">
-        Página {pagina} de {paginas} · {total} chamados
+        Página {pagina} de {paginas} · {total} {plural}
       </p>
       <div className="flex items-center gap-2">
         <Button

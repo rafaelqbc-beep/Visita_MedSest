@@ -9,6 +9,12 @@ import LoginPage from '@/pages/auth/LoginPage'
 import ChamadoDetalhePage from '@/pages/chamados/ChamadoDetalhePage'
 import ChamadosPage from '@/pages/chamados/ChamadosPage'
 import NovoChamadoPage from '@/pages/chamados/NovoChamadoPage'
+import ClienteFormPage from '@/pages/cadastros/ClienteFormPage'
+import ClientesPage from '@/pages/cadastros/ClientesPage'
+import UnidadeFormPage from '@/pages/cadastros/UnidadeFormPage'
+import UnidadesPage from '@/pages/cadastros/UnidadesPage'
+import UsuarioFormPage from '@/pages/cadastros/UsuarioFormPage'
+import UsuariosPage from '@/pages/cadastros/UsuariosPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
 import RelatorioDetalhePage from '@/pages/relatorios/RelatorioDetalhePage'
 import RelatoriosPage from '@/pages/relatorios/RelatoriosPage'
@@ -16,19 +22,12 @@ import CargoEditorPage from '@/pages/visitas/CargoEditorPage'
 import ConferenciaPage from '@/pages/visitas/ConferenciaPage'
 import ExecucaoVisitaPage from '@/pages/visitas/ExecucaoVisitaPage'
 import VisitasPage from '@/pages/visitas/VisitasPage'
-import { EmBreve } from '@/pages/EmBreve'
 import { AuthProvider } from '@/store/AuthContext'
 
 /**
  * As permissões de cada rota vêm de `lib/navegacao.ts`, a mesma fonte do menu
  * da sidebar — assim um item não some do menu e continua acessível pela URL.
  */
-const PAGINAS = [
-  { para: '/clientes', titulo: 'Clientes', sessao: '#17', roles: ['ADMIN', 'GESTOR_COMERCIAL'] },
-  { para: '/usuarios', titulo: 'Usuários', sessao: '#17', roles: ['ADMIN'] },
-  { para: '/unidades', titulo: 'Unidades', sessao: '#17', roles: ['ADMIN'] },
-] as const
-
 /** Manda cada perfil para o primeiro item do menu dele. */
 function Inicio() {
   const { usuario } = useAuth()
@@ -93,11 +92,20 @@ export default function App() {
                 <Route path="/relatorios/:id" element={<RelatorioDetalhePage />} />
               </Route>
 
-              {PAGINAS.map(({ para, titulo, sessao, roles }) => (
-                <Route key={para} element={<ProtectedRoute roles={[...roles]} />}>
-                  <Route path={para} element={<EmBreve titulo={titulo} sessao={sessao} />} />
-                </Route>
-              ))}
+              {/* Cadastros: clientes (ADMIN + GESTOR); usuários e unidades (só ADMIN) */}
+              <Route element={<ProtectedRoute roles={['ADMIN', 'GESTOR_COMERCIAL']} />}>
+                <Route path="/clientes" element={<ClientesPage />} />
+                <Route path="/clientes/novo" element={<ClienteFormPage />} />
+                <Route path="/clientes/:id" element={<ClienteFormPage />} />
+              </Route>
+              <Route element={<ProtectedRoute roles={['ADMIN']} />}>
+                <Route path="/usuarios" element={<UsuariosPage />} />
+                <Route path="/usuarios/novo" element={<UsuarioFormPage />} />
+                <Route path="/usuarios/:id" element={<UsuarioFormPage />} />
+                <Route path="/unidades" element={<UnidadesPage />} />
+                <Route path="/unidades/novo" element={<UnidadeFormPage />} />
+                <Route path="/unidades/:id" element={<UnidadeFormPage />} />
+              </Route>
             </Route>
           </Route>
 

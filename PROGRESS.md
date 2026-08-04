@@ -86,9 +86,9 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #18c — **leitura dos campos de PGR entregue** (conferência + relatório). Fecha o
-item C. Nada em aberto ao encerrar. **Próximo: retomar os pendentes 17–20** — começar
-pelos cadastros admin (#17), a não ser que a operação peça outra coisa após ver o ciclo._
+_Sessão #19 — **cadastros admin (#17) entregues** (clientes, usuários, unidades: lista +
+formulário + ativar/desativar). 15/15 no E2E. Nada em aberto ao encerrar. **Próximo:
+#18 offline, #19 PWA, #20 deploy** — falar com o usuário sobre a ordem._
 
 ---
 
@@ -102,7 +102,7 @@ pelos cadastros admin (#17), a não ser que a operação peça outra coisa após
 > **A.** ~~Revisão do CATALOGO_RISCOS.md~~ ✅ operação aprovou como versão inicial (#18)
 > **B.** ~~Backend: migration 0004 + catálogo + schemas + Word/PDF~~ ✅ feito (#18)
 > **C.** Frontend: ~~formulário de campo (#18b)~~ ✅ · ~~conferência + relatório (#18c)~~ ✅
-> **D.** Retomar 17–20 ← *estamos aqui*
+> **D.** Retomar 17–20 → ~~#17 cadastros admin (#19)~~ ✅ · **#18 offline · #19 PWA · #20 deploy** ← *aqui*
 
 Ordem original (retomar depois de A–C):
 
@@ -112,7 +112,7 @@ Ordem original (retomar depois de A–C):
 > na fila do técnico interno certo → ele baixa o .docx (54 KB, com as fotos e as
 > assinaturas dentro). **É o momento de validar com a operação antes de investir no resto.**
 
-17. Frontend: cadastros admin (clientes, usuários, unidades)
+17. ~~Frontend: cadastros admin (clientes, usuários, unidades)~~ ✅ **feito na sessão #19**
 18. **Offline/IndexedDB + sincronização** (tirado da #14 — ver notas da sessão)
 19. PWA (service worker, instalar no tablet)
 20. DEPLOY.md + subir no VPS
@@ -123,6 +123,40 @@ Ordem original (retomar depois de A–C):
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #19 (2026-08-04) — Cadastros admin (pendente #17):**
+- As 3 telas saíram do `EmBreve` (o array `PAGINAS` do `App.tsx` foi removido). A API já
+  existia; foi só frontend. **Permissões espelham `lib/navegacao.ts`:** clientes = ADMIN +
+  GESTOR_COMERCIAL; usuários e unidades = só ADMIN. Verificado no E2E (gestor toma
+  `/sem-permissao` em `/usuarios` e `/unidades`).
+- **Padrão por entidade:** `services/cadastroService.ts` (CRUD + listas de apoio
+  `listarUnidadesAtivas`/`listarGestores` para os selects), `hooks/useCadastros.ts`,
+  `types/cadastros.ts` (Create/Update/Filtros), e por entidade uma `*Page` (lista) e uma
+  `*FormPage` (novo + editar na mesma rota `/x/novo` e `/x/:id`).
+- **⚠️ Repeti a correção da armadilha do bug #1 da #16** (form vazio na edição): o corpo do
+  formulário é um **componente interno `Formulario`** que só monta depois de os dados
+  chegarem (`if (editando && isLoading) skeleton`), então o `useState` inicial já enxerga
+  o registro. Se fosse `useState(data?.campo)` no componente que carrega, viria vazio.
+- **Desativar em vez de excluir:** não há DELETE de cliente/usuário/unidade (quebraria FKs
+  de chamados históricos). O form de edição tem um checkbox "ativo"; a lista mostra
+  `AtivoBadge`. É a mesma filosofia do "anular vs. excluir" dos chamados.
+- **Senha no usuário:** obrigatória (≥6) no cadastro; na edição, **em branco = manter a
+  atual** (só envia `senha` se o admin digitou uma nova). Provado no E2E: o usuário criado
+  loga com a senha definida (hash no backend).
+- **CNPJ da unidade é imutável na edição** (o backend não aceita trocar) — campo desabilitado
+  com aviso. No cadastro é obrigatório e validado pelo backend (dígito verificador).
+  ⚠️ Para testar criação de unidade é preciso um **CNPJ válido** (ex.: `11.444.777/0001-61`);
+  CNPJ aleatório toma 422.
+- **Componentes novos reusáveis:** `AtivoBadge`, `hooks/useDebounce` (busca sem disparar a
+  cada tecla), e `Paginacao` ganhou prop `substantivo: [sing, plural]` (era hardcoded
+  "chamado"). Qualquer filtro novo volta para a página 1 (senão fica numa página vazia).
+- **Armadilha de teste (Playwright):** o card de cliente inclui o `TipoVisitaBadge` ("Novo
+  Cliente") no nome acessível, colidindo com o botão "Novo cliente" → usar
+  `{ name: 'Novo cliente', exact: true }` (a caixa difere: botão minúsculo, badge maiúsculo).
+- **Validado: 15/15 no E2E** (admin cria/edita/desativa as 3 entidades; filtro por perfil;
+  o novo usuário loga; edição de cliente NÃO vem vazia; permissões do gestor). Screenshot
+  do form de cliente inspecionado. `tsc` limpo. Testes criam registros → **banco resetado
+  ao seed depois**.
 
 **Sessão #18c (2026-08-04) — Nota: celular/Android (pergunta do usuário):**
 - **O app roda em celular e em Android, sem mudança de código** — é uma web app
