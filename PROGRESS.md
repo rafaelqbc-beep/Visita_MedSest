@@ -1,12 +1,12 @@
 # MedSest Visita — Progresso do Desenvolvimento
 
 ## Status Geral
-**Última atualização:** 2026-08-03
-**Sessão atual:** #18b
-**Status:** 🧱 **CAMPOS DE PGR: BACKEND + FORMULÁRIO DE CAMPO PRONTOS** — o técnico já
-registra riscos (acordeão), EPIs, medições, nº de trabalhadores e jornada no tablet.
-**Falta ligar nas telas de leitura:** conferência (o cliente revisar antes de assinar)
-e relatório do técnico interno. Migration 0004 aplicada; 19/19 no E2E de iPad.
+**Última atualização:** 2026-08-04
+**Sessão atual:** #18c
+**Status:** ✅ **CAMPOS DE PGR COMPLETOS (ponta a ponta)** — o técnico registra
+riscos/EPIs/medições no tablet, o cliente os revê na conferência antes de assinar, e o
+técnico interno os lê no relatório (agrupados por categoria) além do Word/PDF. **O
+item C fechou.** Próximo: retomar os pendentes 17–20 (cadastros admin, offline, PWA, deploy).
 
 ---
 
@@ -86,10 +86,9 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #18b — **formulário de campo dos campos de PGR entregue.** O técnico registra
-riscos/EPIs/medições no tablet. Decisões de UX (com o usuário): tela dedicada por cargo,
-acordeão por categoria. 19/19 no E2E de iPad. **Próximo: conferência + relatório** —
-mostrar riscos/EPIs/medições ao cliente antes de assinar e ao técnico interno na leitura._
+_Sessão #18c — **leitura dos campos de PGR entregue** (conferência + relatório). Fecha o
+item C. Nada em aberto ao encerrar. **Próximo: retomar os pendentes 17–20** — começar
+pelos cadastros admin (#17), a não ser que a operação peça outra coisa após ver o ciclo._
 
 ---
 
@@ -102,8 +101,8 @@ mostrar riscos/EPIs/medições ao cliente antes de assinar e ao técnico interno
 >
 > **A.** ~~Revisão do CATALOGO_RISCOS.md~~ ✅ operação aprovou como versão inicial (#18)
 > **B.** ~~Backend: migration 0004 + catálogo + schemas + Word/PDF~~ ✅ feito (#18)
-> **C.** Frontend: ~~formulário de campo~~ ✅ (#18b) · conferência + relatório ← *próximo*
-> **D.** Aí sim retomar 17–20.
+> **C.** Frontend: ~~formulário de campo (#18b)~~ ✅ · ~~conferência + relatório (#18c)~~ ✅
+> **D.** Retomar 17–20 ← *estamos aqui*
 
 Ordem original (retomar depois de A–C):
 
@@ -124,6 +123,31 @@ Ordem original (retomar depois de A–C):
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #18c (2026-08-04) — Leitura dos campos de PGR (conferência + relatório):**
+- **Decisão de UX (com o usuário):** conferência = **resumo compacto** (texto corrido),
+  relatório do técnico interno = **detalhado, agrupado por categoria** (espelha o PGR).
+  Escopo: as duas telas de leitura numa sessão (fecham o item C).
+- **`lib/pgr.ts` centraliza a tradução código→rótulo e o agrupamento:** `riscosAgrupados`
+  e `episAgrupados` montam `[{rotulo_categoria, itens[]}]` a partir do catálogo (a
+  **categoria vem do catálogo na exibição**, nunca do banco — mesma regra do backend);
+  `medicoesDoSetor`/`medicaoBr` formatam as medições em pt-BR ("87,5 dB(A)"); código fora
+  do catálogo cai em "Outros" em vez de sumir.
+- **Componentes de leitura reusáveis** em `components/pgr/`: `CargoPgr` (prop
+  `variante: 'compacto' | 'detalhado'`) e `SetorMedicoes`. Usados na conferência, no
+  relatório **e** na `ExecucaoVisitaPage` (que teve seu `medicaoBr`/`MedicoesLidas`
+  locais REMOVIDOS e trocados pelo `SetorMedicoes` compartilhado — uma fonte só).
+- **Ausência declarada aparece como texto** ("nenhum identificado" / "não utiliza"),
+  diferente de campo não preenchido (que não renderiza) — preserva a semântica dos 3
+  estados de `possui_riscos`/`utiliza_epis`.
+- **⚠️ Ainda pendente do fluxo de notificações:** o cliente vê os riscos/EPIs na tela de
+  conferência (antes de assinar) e no PDF do recibo; o Word/PDF já traziam esses campos
+  desde a #18. Não sobrou nada de PGR sem exibição.
+- **Validado: 9/9 no E2E** (Playwright) — conferência no iPad (medições, riscos e EPIs do
+  Operador em texto corrido, "não utiliza" do Auxiliar, "outros riscos" no texto) e
+  relatório no desktop (medições, riscos **agrupados** por categoria, rótulo do risco,
+  cargo sem EPI). **Ambos os screenshots inspecionados** — layout limpo. `tsc` limpo.
+  Testes são só leitura → banco intacto no seed.
 
 **Sessão #18b (2026-08-03) — Frontend: formulário de campo dos campos de PGR:**
 - **Decisões de UX tomadas com o usuário** (era o ponto "decidir junto" da #18): (1)

@@ -12,10 +12,13 @@ import { PageWrapper } from '@/components/layout/PageWrapper'
 import { CanvasAssinatura, type CanvasAssinaturaRef } from '@/components/CanvasAssinatura'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { TipoVisitaBadge } from '@/components/TipoVisitaBadge'
+import { CargoPgr } from '@/components/pgr/CargoPgr'
+import { SetorMedicoes } from '@/components/pgr/SetorMedicoes'
 import { Button } from '@/components/ui/Button'
 import { FormField } from '@/components/ui/FormField'
 import { Input } from '@/components/ui/Input'
 import { useAuth } from '@/hooks/useAuth'
+import { useCatalogo } from '@/hooks/useCatalogo'
 import { useChamado } from '@/hooks/useChamados'
 import { useGeolocalizacao } from '@/hooks/useGeolocalizacao'
 import {
@@ -53,6 +56,7 @@ export default function ConferenciaPage() {
   const { usuario } = useAuth()
   const { data: chamado, isLoading } = useChamado(id)
   const { data: setores = [] } = useSetores(id)
+  const { data: catalogo } = useCatalogo()
   const { obter } = useGeolocalizacao()
 
   const assinarCliente = useAssinarCliente(id)
@@ -203,6 +207,9 @@ export default function ConferenciaPage() {
                       {setor.descricao_ambiente}
                     </p>
                   )}
+                  <div className="mt-1">
+                    <SetorMedicoes setor={setor} />
+                  </div>
                 </div>
                 <Link
                   to={`/visitas/${id}`}
@@ -215,13 +222,19 @@ export default function ConferenciaPage() {
               </div>
 
               {setor.cargos.length > 0 && (
-                <ul className="mt-2 space-y-1">
+                <ul className="mt-3 space-y-2">
                   {setor.cargos.map((cargo) => (
-                    <li key={cargo.id} className="text-sm text-content">
-                      • {cargo.nome_cargo}
-                      {cargo.descricao_funcao && (
-                        <span className="text-content-secondary"> — {cargo.descricao_funcao}</span>
-                      )}
+                    <li key={cargo.id} className="rounded-lg bg-accent/30 p-2">
+                      <p className="text-sm font-medium text-content">
+                        {cargo.nome_cargo}
+                        {cargo.descricao_funcao && (
+                          <span className="font-normal text-content-secondary">
+                            {' '}
+                            — {cargo.descricao_funcao}
+                          </span>
+                        )}
+                      </p>
+                      <CargoPgr cargo={cargo} catalogo={catalogo} variante="compacto" />
                     </li>
                   ))}
                 </ul>

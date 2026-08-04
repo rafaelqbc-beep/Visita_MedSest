@@ -4,7 +4,10 @@ import { AlertCircle, ArrowLeft, FileDown, FileText, MapPin } from 'lucide-react
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import { StatusBadge } from '@/components/StatusBadge'
 import { TipoVisitaBadge } from '@/components/TipoVisitaBadge'
+import { CargoPgr } from '@/components/pgr/CargoPgr'
+import { SetorMedicoes } from '@/components/pgr/SetorMedicoes'
 import { Button } from '@/components/ui/Button'
+import { useCatalogo } from '@/hooks/useCatalogo'
 import { useChamado } from '@/hooks/useChamados'
 import { useSetores } from '@/hooks/useVisita'
 import { data as fmtData, dataHora } from '@/lib/formato'
@@ -27,6 +30,7 @@ export default function RelatorioDetalhePage() {
   const qc = useQueryClient()
   const { data: chamado, isLoading, isError } = useChamado(id)
   const { data: setores = [] } = useSetores(id)
+  const { data: catalogo } = useCatalogo()
   const [baixando, setBaixando] = useState<'word' | 'pdf' | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
@@ -167,17 +171,26 @@ export default function RelatorioDetalhePage() {
                   {setor.descricao_ambiente}
                 </p>
               )}
+              <div className="mt-2">
+                <SetorMedicoes setor={setor} />
+              </div>
 
               {setor.cargos.length > 0 && (
                 <div className="mt-3">
-                  <h4 className="mb-1 text-sm font-medium text-content-label">Cargos e funções</h4>
-                  <ul className="space-y-1">
+                  <h4 className="mb-2 text-sm font-medium text-content-label">Cargos e funções</h4>
+                  <ul className="space-y-3">
                     {setor.cargos.map((cargo) => (
-                      <li key={cargo.id} className="text-sm text-content">
-                        • {cargo.nome_cargo}
-                        {cargo.descricao_funcao && (
-                          <span className="text-content-secondary"> — {cargo.descricao_funcao}</span>
-                        )}
+                      <li key={cargo.id} className="rounded-lg border border-border p-3">
+                        <p className="text-sm font-medium text-content">
+                          {cargo.nome_cargo}
+                          {cargo.descricao_funcao && (
+                            <span className="font-normal text-content-secondary">
+                              {' '}
+                              — {cargo.descricao_funcao}
+                            </span>
+                          )}
+                        </p>
+                        <CargoPgr cargo={cargo} catalogo={catalogo} variante="detalhado" />
                       </li>
                     ))}
                   </ul>

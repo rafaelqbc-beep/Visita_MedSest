@@ -12,6 +12,7 @@ import {
 import { PageWrapper } from '@/components/layout/PageWrapper'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { TipoVisitaBadge } from '@/components/TipoVisitaBadge'
+import { SetorMedicoes } from '@/components/pgr/SetorMedicoes'
 import { Button } from '@/components/ui/Button'
 import { useChamado } from '@/hooks/useChamados'
 import { useAtualizarSetor, useCriarSetor, useRemoverSetor, useSetores } from '@/hooks/useVisita'
@@ -22,37 +23,6 @@ import { CargosSetor } from '@/pages/visitas/CargosSetor'
 import { FotosSetor } from '@/pages/visitas/FotosSetor'
 import { SetorForm } from '@/pages/visitas/SetorForm'
 import type { SetorCampos, SetorDetalhe } from '@/types/visita'
-
-/** '87.50' → '87,5'; null/'' → null. Formata a medição para leitura em pt-BR. */
-function medicaoBr(valor: string | null, unidade: string): string | null {
-  if (valor == null || valor.trim() === '') return null
-  const n = Number(valor)
-  if (Number.isNaN(n)) return null
-  return `${String(n).replace('.', ',')} ${unidade}`
-}
-
-function MedicoesLidas({ setor }: { setor: SetorDetalhe }) {
-  const medicoes = [
-    medicaoBr(setor.ruido_db, 'dB(A)'),
-    medicaoBr(setor.calor_ibutg, '°C IBUTG'),
-    medicaoBr(setor.iluminancia_lux, 'lux'),
-  ].filter(Boolean)
-  if (medicoes.length === 0 && !setor.maquinas) return null
-  return (
-    <div className="space-y-1 text-sm">
-      {setor.maquinas && (
-        <p className="text-content-secondary">
-          <span className="font-medium text-content">Máquinas:</span> {setor.maquinas}
-        </p>
-      )}
-      {medicoes.length > 0 && (
-        <p className="text-content-secondary">
-          <span className="font-medium text-content">Medições:</span> {medicoes.join(' · ')}
-        </p>
-      )}
-    </div>
-  )
-}
 
 function CardSetor({
   setor,
@@ -149,7 +119,7 @@ function CardSetor({
                       </p>
                     </div>
                   )}
-                  <MedicoesLidas setor={setor} />
+                  <SetorMedicoes setor={setor} />
                 </div>
                 {editavel && (
                   <button
