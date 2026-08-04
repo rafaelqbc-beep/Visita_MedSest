@@ -18,6 +18,9 @@ export function useSetores(chamadoId: string | undefined) {
     queryKey: ['setores', chamadoId],
     queryFn: () => service.listarSetores(chamadoId!),
     enabled: Boolean(chamadoId),
+    // 'always': o React Query pausaria offline (networkMode padrão 'online'); aqui
+    // o service resolve o offline (cai no espelho), então a função deve sempre rodar.
+    networkMode: 'always',
   })
 }
 
@@ -45,47 +48,53 @@ function useMutacaoDaVisita<TVars, TResultado = void>(
   const qc = useQueryClient()
   return useMutation({
     mutationFn: fn,
+    // 'always': sem isto o React Query PAUSA a mutação offline e a função (que
+    // trata o offline por dentro: espelho + fila) nunca roda.
+    networkMode: 'always',
     onSuccess: () => qc.invalidateQueries({ queryKey: ['setores', chamadoId] }),
   })
 }
 
 export function useCriarSetor(chamadoId: string) {
+  // criarSetor lê o chamado_id do próprio body.
   return useMutacaoDaVisita<SetorCreate, Setor>(chamadoId, service.criarSetor)
 }
 
 export function useAtualizarSetor(chamadoId: string) {
   return useMutacaoDaVisita<{ id: string; body: SetorUpdate }, Setor>(chamadoId, ({ id, body }) =>
-    service.atualizarSetor(id, body),
+    service.atualizarSetor(chamadoId, id, body),
   )
 }
 
 export function useRemoverSetor(chamadoId: string) {
-  return useMutacaoDaVisita<string>(chamadoId, service.removerSetor)
+  return useMutacaoDaVisita<string>(chamadoId, (id) => service.removerSetor(chamadoId, id))
 }
 
 export function useCriarCargo(chamadoId: string) {
-  return useMutacaoDaVisita<CargoCreate, Cargo>(chamadoId, service.criarCargo)
+  return useMutacaoDaVisita<CargoCreate, Cargo>(chamadoId, (body) =>
+    service.criarCargo(chamadoId, body),
+  )
 }
 
 export function useAtualizarCargo(chamadoId: string) {
   return useMutacaoDaVisita<{ id: string; body: CargoUpdate }, Cargo>(chamadoId, ({ id, body }) =>
-    service.atualizarCargo(id, body),
+    service.atualizarCargo(chamadoId, id, body),
   )
 }
 
 export function useRemoverCargo(chamadoId: string) {
-  return useMutacaoDaVisita<string>(chamadoId, service.removerCargo)
+  return useMutacaoDaVisita<string>(chamadoId, (id) => service.removerCargo(chamadoId, id))
 }
 
 export function useEnviarFoto(chamadoId: string) {
   return useMutacaoDaVisita<{ setorId: string; arquivo: File; descricao?: string }, Foto>(
     chamadoId,
-    ({ setorId, arquivo, descricao }) => service.enviarFoto(setorId, arquivo, descricao),
+    ({ setorId, arquivo, descricao }) => service.enviarFoto(chamadoId, setorId, arquivo, descricao),
   )
 }
 
 export function useRemoverFoto(chamadoId: string) {
-  return useMutacaoDaVisita<string>(chamadoId, service.removerFoto)
+  return useMutacaoDaVisita<string>(chamadoId, (id) => service.removerFoto(chamadoId, id))
 }
 
 // --- Encerramento ---

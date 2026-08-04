@@ -86,12 +86,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #20 — **offline #18, Etapa 1 de 3 (leitura) entregue.** Espelho IndexedDB: a visita
-já carregada reabre sem sinal (cliente, setores, cargos, medições). 9/9 no E2E com
-`setOffline`. **Escopo combinado com o usuário: offline só para REGISTRAR a visita**
-(assinatura/finalizar seguem online), **em etapas.** Falta a Etapa 2 (captura offline:
-criar/editar setor/cargo/foto sem sinal) e a Etapa 3 (sincronizar ao reconectar com
-mapeamento de ID). **Hoje offline só LÊ; escrever ainda exige sinal.**_
+_Sessão #21 — **offline #18, Etapa 2 de 3 (captura) entregue.** Sem sinal já dá para
+criar/editar/remover setor, cargo e foto: grava no espelho com id local (`local-…`) e
+enfileira na outbox (IndexedDB) para sincronizar depois. 10/10 no E2E offline + 19/19 no
+E2E online (sem regressão). **Falta a Etapa 3: sincronizar ao reconectar** (replay da fila
+com mapeamento de id local→real, upload das fotos, indicador de sync). Assinatura/finalizar
+seguem exigindo sinal (escopo combinado)._
 
 ---
 
@@ -117,7 +117,7 @@ Ordem original (retomar depois de A–C):
 
 17. ~~Frontend: cadastros admin (clientes, usuários, unidades)~~ ✅ **feito na sessão #19**
 18. **Offline/IndexedDB + sincronização** (tirado da #14) — 🔄 **em andamento:** Etapa 1
-    (leitura) ✅ #20 · Etapa 2 (captura) e Etapa 3 (sync com mapeamento de ID) pendentes
+    (leitura) ✅ #20 · Etapa 2 (captura) ✅ #21 · **Etapa 3 (sync com mapeamento de ID) pendente**
 19. PWA (service worker, instalar no tablet)
 20. DEPLOY.md + subir no VPS
 
@@ -127,6 +127,45 @@ Ordem original (retomar depois de A–C):
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #21 (2026-08-04) — Offline #18, Etapa 2 (captura):**
+- **🔑 A DESCOBERTA QUE DESTRAVOU TUDO — o React Query PAUSA mutações E refetches quando
+  offline** (`networkMode` padrão `'online'`, que usa `navigator.onLine`). Sintoma: a
+  `mutateAsync` ficava pendente para sempre e o service **nunca rodava** (nem o primeiro
+  `console.log` aparecia). Como o nosso desenho trata o offline DENTRO do service (tenta a
+  API, no erro de rede cai no espelho + fila), a função precisa **sempre** rodar. Correção:
+  **`networkMode: 'always'`** em `useSetores`, `useChamado` e nas mutações de
+  setor/cargo/foto (`useMutacaoDaVisita`). Online o comportamento é idêntico ao de antes.
+  ⚠️ **Regra para qualquer coisa offline nova:** o hook precisa de `networkMode: 'always'`.
+- **Padrão da captura offline:** cada write do `visitaService` (criar/editar/remover
+  setor/cargo/foto) faz `try { API } catch (estaOffline) { espelho + fila }`. Offline gera
+  um **id local `local-<uuid>`**, aplica no espelho (a árvore de setores no IndexedDB) e
+  **enfileira a operação na outbox** (`lib/offline/fila.ts`, store `fila` autoIncrement).
+  A UI reflete via o read-through (a invalidação relê o espelho). Otimista, sem piscar.
+- **Fotos offline:** guardadas como **data URL** no espelho (aparecem na tela sem servidor)
+  E o binário vai para a store `fotosPendentes` (upload multipart na Etapa 3). `urlDaFoto`
+  passa `data:`/`blob:` direto; o resto continua `/uploads/...`.
+- **IDs de alvo na fila podem ser LOCAIS** (ex.: criar cargo num setor criado offline):
+  a Etapa 3 troca `local-…` pelo id real do servidor antes de reenviar. Registrado no
+  tipo `Operacao`.
+- **Novos módulos:** `lib/offline/fila.ts` (outbox: enfileirar/listar/remover/tamanho),
+  e `lib/offline/mirror.ts` ganhou as mutações da árvore (`mirrorAddSetor`, `mirrorAddCargo`,
+  `mirrorAddFoto`, updates/removes) + `novoLocalId`/`ehLocal` + `salvarFotoPendente`.
+  `db.ts` foi para a **v2** (stores `fila` e `fotosPendentes`; o idb migra no `upgrade`).
+- **Hooks de write ganharam `chamadoId`** (o service offline precisa dele para achar a
+  árvore no espelho): `atualizarSetor/removerSetor/criarCargo/atualizarCargo/removerCargo/
+  enviarFoto/removerFoto(chamadoId, …)`. `criarSetor` não muda (o `chamado_id` vem no body).
+- **⚠️ Falta a Etapa 3:** sincronizar ao reconectar (replay da fila na ordem, mapear
+  id local→real, subir as fotos, esvaziar a outbox, e um indicador "sincronizando / N
+  pendentes"). Até lá, **o que foi capturado offline fica só no aparelho** — não sobe
+  sozinho ao voltar o sinal. Também: reconciliar remoção de um registro que só existe
+  local (cancelar o par criar+remover em vez de mandar DELETE de id inexistente).
+- **Validado: 10/10 no E2E offline** (`setOffline`) — criar setor, editar setor existente,
+  criar cargo em setor local, tudo persistido no espelho com **id local**, a **fila na
+  ordem certa** (`criarSetor, atualizarSetor, criarCargo`), e sobrevivendo ao remontar. E
+  **19/19 no E2E online** (formulário de campo da #18b) = **sem regressão**. `tsc` limpo.
+- **Nota de teste:** ao depurar, filtrar o console do Playwright escondeu os logs — capturar
+  TUDO. E o falso negativo (mutação "não roda") era o `networkMode`, não o service.
 
 **Sessão #20 (2026-08-04) — Offline #18, Etapa 1 (leitura):**
 - **Decisões com o usuário:** offline **só para registrar a visita** (setor/cargo/foto);

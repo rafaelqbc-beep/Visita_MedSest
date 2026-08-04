@@ -16,6 +16,9 @@ export function useChamado(id: string | undefined) {
     queryKey: ['chamado', id],
     queryFn: () => service.obterChamado(id!),
     enabled: Boolean(id),
+    // 'always': permite reabrir a visita offline (o service cai no espelho) em vez
+    // de o React Query pausar o fetch por estar sem rede.
+    networkMode: 'always',
   })
 }
 
