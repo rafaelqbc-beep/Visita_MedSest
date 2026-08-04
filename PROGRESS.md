@@ -2,11 +2,11 @@
 
 ## Status Geral
 **Última atualização:** 2026-08-04
-**Sessão atual:** #22
-**Status:** ✅ **OFFLINE COMPLETO (#18 fechado, 3 etapas).** O técnico registra a visita
-sem sinal (setor/cargo/foto) e tudo sincroniza sozinho ao reconectar, com mapeamento de
-id local→real e upload das fotos. Indicador de pendências/sync no header. Assinatura e
-finalizar seguem online (escopo combinado). **Pendentes: #19 PWA, #20 deploy.**
+**Sessão atual:** #23
+**Status:** ✅ **OFFLINE + PWA COMPLETOS (#18 e #19).** O técnico registra a visita sem
+sinal e tudo sincroniza ao reconectar (id local→real + fotos). O app **instala na tela
+inicial** e **funciona offline até num reload total** (shell no service worker + sessão
+offline + espelho). Assinatura/finalizar seguem online. **Falta só o #20 (deploy no VPS).**
 
 ---
 
@@ -86,6 +86,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
+_Sessão #23 — **PWA #19 FECHADO.** App instalável (botão "Instalar app" quando o navegador
+oferece) + service worker cacheando o shell (reload offline não dá tela branca) +
+`navigateFallback` p/ rotas de SPA + cache de `/uploads` (fotos abrem offline) + **sessão
+offline** (identidade em cache — NUNCA token/senha — reabrir sem sinal continua funcionando).
+10/10 no E2E (build+preview). **Só falta o #20 (deploy).**_
+
 _Sessão #22 — **offline #18 FECHADO (Etapa 3, sincronização).** Ao reconectar, a outbox
 esvazia sozinha: replay na ordem, id local→real, upload das fotos, reconciliação
 (criar+remover offline não vai ao servidor) e indicador de sync/pendências no header.
@@ -124,8 +130,8 @@ Ordem original (retomar depois de A–C):
 17. ~~Frontend: cadastros admin (clientes, usuários, unidades)~~ ✅ **feito na sessão #19**
 18. ~~**Offline/IndexedDB + sincronização**~~ ✅ **FECHADO** (Etapa 1 leitura #20 · Etapa 2
     captura #21 · Etapa 3 sync #22)
-19. PWA (service worker, instalar no tablet)
-20. DEPLOY.md + subir no VPS
+19. ~~PWA (service worker, instalar no tablet)~~ ✅ **feito na sessão #23**
+20. DEPLOY.md + subir no VPS ← *último pendente*
 
 **Pendente sem sessão definida (depende de terceiros):**
 - Envio real de e-mail/WhatsApp — aguardando credenciais SMTP/Twilio (o usuário avisou em 15/07 que está providenciando).
@@ -133,6 +139,40 @@ Ordem original (retomar depois de A–C):
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #23 (2026-08-04) — PWA (#19):**
+- O `vite-plugin-pwa` já tinha manifest + ícones (#9b). Faltava o comportamento offline:
+  - **`workbox.navigateFallback: 'index.html'`** + `navigateFallbackDenylist: [/^\/api\//,
+    /^\/uploads\//]` → recarregar uma rota de SPA (ex.: `/visitas/abc`) offline serve o
+    shell em vez de tela branca; `/api` e `/uploads` não caem no HTML.
+  - **`/uploads` em CacheFirst** (uuid no nome = imutável) → foto vista uma vez abre offline.
+  - **`/api` NÃO é cacheado pelo SW de propósito** — os dados offline vêm do espelho
+    IndexedDB (mais fresco, sob nosso controle). Cachear /api devolveria JSON velho.
+  - `injectRegister: 'auto'` + `devOptions.enabled: false` (SW só no build; no dev atrapalha
+    o HMR). **Adicionado `preview.proxy`** (o `vite preview` não usa o `server.proxy`) para
+    testar o build contra o backend.
+- **🔑 Sessão offline** (`lib/sessaoCache.ts`): guarda só a **identidade** (nome/perfil/id)
+  no localStorage — **NUNCA o token nem a senha** (o token segue só em memória; a regra da
+  #10 continua). `restaurarSessao`: no erro de refresh, se for **falha de rede** (offline) e
+  houver identidade em cache, devolve o usuário do cache (segue trabalhando; dados vêm do
+  espelho); se for erro real (refresh revogado), limpa e cai no login. Ao reconectar, uma
+  requisição 401 → refresh revalida sozinha. Login salva a identidade; logout limpa.
+- **Botão "Instalar app"** (`useInstalarApp` + botão no Header): aparece só quando o
+  navegador dispara `beforeinstallprompt` (**Chrome/Android/desktop**; no **iOS** a
+  instalação é manual via Compartilhar → Adicionar à Tela de Início, então o botão não
+  aparece lá — comportamento esperado).
+- **⚠️ Testar PWA = build + preview** (o SW não roda no dev): `npm run build && npm run
+  preview` (porta 4173). O SW só controla a página a partir da 2ª carga → no teste, dar um
+  `reload` e esperar `navigator.serviceWorker.controller` antes de ir offline. `beforeinstall
+  prompt` não dispara sozinho em headless → no teste, disparar um evento sintético com um
+  método `prompt()` para exercitar o botão.
+- **⚠️ Bundle de 956 KB** (272 KB gzip) num único chunk — o build avisa. Aceitável por ora,
+  mas no **#20 (deploy)** vale code-split (React.lazy nas rotas) para a 1ª carga no tablet
+  via celular ser mais leve.
+- **Validado: 10/10 no E2E do PWA** (iPad, build+preview): SW ativo e controlando, manifest
+  válido, identidade guardada, botão instalar aparece e dispara o prompt, imagem de /uploads
+  cacheada, e — o principal — **reload TOTAL offline não cai no login, a visita renderiza
+  (shell + espelho), e a foto abre do cache**. `tsc` e `npm run build` limpos.
 
 **Sessão #22 (2026-08-04) — Offline #18, Etapa 3 (sincronização) — FECHA o offline:**
 - **`lib/offline/sync.ts` é o motor:** `sincronizar()` lê a outbox em ordem e reenvia cada

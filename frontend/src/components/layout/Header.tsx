@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { LogOut, Menu } from 'lucide-react'
+import { Download, LogOut, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { OfflineIndicator } from '@/components/OfflineIndicator'
 import { useAuth } from '@/hooks/useAuth'
+import { useInstalarApp } from '@/hooks/useInstalarApp'
 
 interface HeaderProps {
   onAbrirMenu: () => void
@@ -10,6 +11,7 @@ interface HeaderProps {
 
 export function Header({ onAbrirMenu }: HeaderProps) {
   const { usuario, sair } = useAuth()
+  const { podeInstalar, instalar } = useInstalarApp()
   const [saindo, setSaindo] = useState(false)
 
   async function aoSair() {
@@ -35,6 +37,17 @@ export function Header({ onAbrirMenu }: HeaderProps) {
       </button>
 
       <div className="ml-auto flex items-center gap-3">
+        {podeInstalar && (
+          <Button
+            variante="secondary"
+            onClick={() => void instalar()}
+            aria-label="Instalar aplicativo na tela inicial"
+          >
+            <Download className="h-4 w-4" aria-hidden />
+            <span className="hidden sm:inline">Instalar app</span>
+          </Button>
+        )}
+
         <OfflineIndicator />
 
         {/* O nome já aparece na sidebar; aqui é atalho no desktop, onde a

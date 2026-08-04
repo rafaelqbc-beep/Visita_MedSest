@@ -1,4 +1,6 @@
 import { api, renovarSessao, setAccessToken } from '@/services/api'
+import { estaOffline } from '@/lib/offline/mirror'
+import { limparUsuarioCache, lerUsuarioCache, salvarUsuarioCache } from '@/lib/sessaoCache'
 import type { Usuario } from '@/types'
 
 interface RespostaLogin {
@@ -10,6 +12,7 @@ interface RespostaLogin {
 export async function login(email: string, senha: string): Promise<Usuario> {
   const { data } = await api.post<RespostaLogin>('/auth/login', { email, senha })
   setAccessToken(data.access_token)
+  salvarUsuarioCache(data.usuario) // identidade para reabrir offline
   return data.usuario
 }
 
@@ -19,6 +22,7 @@ export async function logout(): Promise<void> {
   } finally {
     // Mesmo se a chamada falhar, a sessão local tem que morrer.
     setAccessToken(null)
+    limparUsuarioCache()
   }
 }
 
@@ -43,9 +47,18 @@ export async function obterUsuarioLogado(): Promise<Usuario> {
 export async function restaurarSessao(): Promise<Usuario | null> {
   try {
     const { usuario } = await renovarSessao()
+    salvarUsuarioCache(usuario)
     return usuario
-  } catch {
+  } catch (err) {
     setAccessToken(null)
+    // Sem sinal (galpão): mantém a identidade em cache para o técnico seguir
+    // trabalhando offline. Os dados vêm do espelho; ao reconectar, revalida.
+    if (estaOffline(err)) {
+      const cache = lerUsuarioCache()
+      if (cache) return cache
+    }
+    // Erro de verdade (refresh expirado/revogado): sessão acabou.
+    limparUsuarioCache()
     return null
   }
 }
