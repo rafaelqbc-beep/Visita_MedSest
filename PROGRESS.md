@@ -86,9 +86,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #19 — **cadastros admin (#17) entregues** (clientes, usuários, unidades: lista +
-formulário + ativar/desativar). 15/15 no E2E. Nada em aberto ao encerrar. **Próximo:
-#18 offline, #19 PWA, #20 deploy** — falar com o usuário sobre a ordem._
+_Sessão #20 — **offline #18, Etapa 1 de 3 (leitura) entregue.** Espelho IndexedDB: a visita
+já carregada reabre sem sinal (cliente, setores, cargos, medições). 9/9 no E2E com
+`setOffline`. **Escopo combinado com o usuário: offline só para REGISTRAR a visita**
+(assinatura/finalizar seguem online), **em etapas.** Falta a Etapa 2 (captura offline:
+criar/editar setor/cargo/foto sem sinal) e a Etapa 3 (sincronizar ao reconectar com
+mapeamento de ID). **Hoje offline só LÊ; escrever ainda exige sinal.**_
 
 ---
 
@@ -113,7 +116,8 @@ Ordem original (retomar depois de A–C):
 > assinaturas dentro). **É o momento de validar com a operação antes de investir no resto.**
 
 17. ~~Frontend: cadastros admin (clientes, usuários, unidades)~~ ✅ **feito na sessão #19**
-18. **Offline/IndexedDB + sincronização** (tirado da #14 — ver notas da sessão)
+18. **Offline/IndexedDB + sincronização** (tirado da #14) — 🔄 **em andamento:** Etapa 1
+    (leitura) ✅ #20 · Etapa 2 (captura) e Etapa 3 (sync com mapeamento de ID) pendentes
 19. PWA (service worker, instalar no tablet)
 20. DEPLOY.md + subir no VPS
 
@@ -123,6 +127,38 @@ Ordem original (retomar depois de A–C):
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #20 (2026-08-04) — Offline #18, Etapa 1 (leitura):**
+- **Decisões com o usuário:** offline **só para registrar a visita** (setor/cargo/foto);
+  assinatura e finalizar seguem exigindo sinal (finalizar dispara notificação no
+  servidor, e o técnico precisa da confirmação FINALIZADO). E **em 3 etapas**, validando
+  cada uma. Esta sessão fez a **Etapa 1 (leitura offline)**.
+- **`lib/offline/db.ts`** — IndexedDB via `idb` (já no package.json). Stores `chamados`
+  (por id) e `setores` (árvore por chamado_id). Chaves fora de linha. Versão 1; as stores
+  `fila`/`fotosPendentes` da Etapa 2 entram numa v2 (o idb migra no `upgrade`).
+- **`lib/offline/mirror.ts`** — espelho read-through: `obterChamado` e `listarSetores`
+  gravam no IndexedDB no sucesso e, **em erro de REDE** (`estaOffline` = axios sem
+  `response`), releem do espelho. **Erro HTTP (com response) é propagado** — não mascara
+  bug do servidor. Cache é best-effort (try/catch): se o IndexedDB falhar, o online segue.
+- **Por que detectar por erro do axios e não `navigator.onLine`:** o `navigator.onLine`
+  mente (Wi-Fi sem internet = "online"); o erro de rede real do axios é a verdade. O
+  caminho online fica **idêntico** ao de antes (só ganha a escrita no espelho) — zero
+  regressão, verificado.
+- **⚠️ Ainda NÃO funciona offline:** escrever (criar/editar/remover setor/cargo/foto) —
+  a mutação estoura com erro de rede. É a **Etapa 2**. Hoje offline só LÊ uma visita já
+  aberta antes.
+- **⚠️ Fotos não aparecem offline:** o `<img src="/uploads/...">` precisa do servidor (ou
+  do cache do service worker). O texto (setor/cargo/medições) aparece; as imagens não.
+  Cache de imagem é a Etapa 3/PWA (#19).
+- **Nota de teste (Playwright):** `import('/src/...')` no `page.evaluate` **falha offline**
+  no Vite dev (o módulo é servido por HTTP). Para verificar o espelho sem rede, **ler o
+  IndexedDB direto** (`indexedDB.open('medsest-offline')`) — é local. E o teste ponta a
+  ponta reabre a visita no app via `pushState`+`popstate` (navegação client-side, sem
+  reload — reload offline exige o service worker, que é o #19).
+- **Validado: 9/9 no E2E** (iPad + `context.setOffline`) — espelho gravado no IndexedDB na
+  leitura online (2 setores, cliente, cargo, medição), rede realmente caída
+  (`/api/health` inacessível), e a visita reabrindo do espelho offline (cliente, setor,
+  cargo e "87,5 dB(A)" na tela). `tsc` limpo. Teste só lê → banco intacto.
 
 **Sessão #19 (2026-08-04) — Cadastros admin (pendente #17):**
 - As 3 telas saíram do `EmBreve` (o array `PAGINAS` do `App.tsx` foi removido). A API já

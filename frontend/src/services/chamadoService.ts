@@ -1,4 +1,5 @@
 import { api } from '@/services/api'
+import { estaOffline, lerChamadoMirror, salvarChamadoMirror } from '@/lib/offline/mirror'
 import type {
   ChamadoCreate,
   ChamadoListItem,
@@ -21,8 +22,18 @@ export async function listarChamados(filtros: FiltrosChamado): Promise<Page<Cham
 }
 
 export async function obterChamado(id: string): Promise<ChamadoListItem> {
-  const { data } = await api.get<ChamadoListItem>(`/chamados/${id}`)
-  return data
+  try {
+    const { data } = await api.get<ChamadoListItem>(`/chamados/${id}`)
+    // Espelha para reabrir a visita offline; não bloqueia o retorno.
+    void salvarChamadoMirror(data)
+    return data
+  } catch (err) {
+    if (estaOffline(err)) {
+      const cache = await lerChamadoMirror(id)
+      if (cache) return cache
+    }
+    throw err
+  }
 }
 
 export async function criarChamado(body: ChamadoCreate): Promise<ChamadoListItem> {

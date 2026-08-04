@@ -1,4 +1,5 @@
 import { api } from '@/services/api'
+import { estaOffline, lerSetoresMirror, salvarSetoresMirror } from '@/lib/offline/mirror'
 import type { ChamadoListItem } from '@/types/chamado'
 import type {
   Cargo,
@@ -56,8 +57,17 @@ export async function finalizarVisita(
 // O GET traz cargos e fotos aninhados: uma chamada monta a tela inteira.
 
 export async function listarSetores(chamadoId: string): Promise<SetorDetalhe[]> {
-  const { data } = await api.get<SetorDetalhe[]>('/setores', { params: { chamado_id: chamadoId } })
-  return data
+  try {
+    const { data } = await api.get<SetorDetalhe[]>('/setores', { params: { chamado_id: chamadoId } })
+    void salvarSetoresMirror(chamadoId, data)
+    return data
+  } catch (err) {
+    if (estaOffline(err)) {
+      const cache = await lerSetoresMirror(chamadoId)
+      if (cache) return cache
+    }
+    throw err
+  }
 }
 
 export async function criarSetor(body: SetorCreate): Promise<Setor> {
