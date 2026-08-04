@@ -139,7 +139,9 @@ export const CanvasAssinatura = forwardRef<CanvasAssinaturaRef, Props>(
             onPointerLeave={terminar}
             onPointerCancel={terminar}
             // touch-none: sem isso o dedo rola a página em vez de desenhar.
-            className="h-40 w-full cursor-crosshair touch-none"
+            // Mais alto no celular (tela estreita, menos espaço para o traço);
+            // no tablet (sm+) mantém a altura padrão.
+            className="h-56 w-full cursor-crosshair touch-none sm:h-40"
           />
           {!temTraco && (
             <p

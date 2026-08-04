@@ -124,6 +124,23 @@ Ordem original (retomar depois de A–C):
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
 
+**Sessão #18c (2026-08-04) — Nota: celular/Android (pergunta do usuário):**
+- **O app roda em celular e em Android, sem mudança de código** — é uma web app
+  responsiva (Tailwind), agnóstica de SO. Verificado com screenshots em iPhone 12
+  (390px), iPhone SE (320px) e **Pixel 5 (Android Chrome, 393px)**: editor de cargo
+  (acordeão empilha em 1 coluna), conferência e canvas de assinatura, todos usáveis.
+- **Provado que assina no Android:** um `PointerEvent` de toque real desenha no canvas
+  E habilita "Confirmar assinatura" E deixa pixels no PNG. (⚠️ nota de teste: `page.mouse`
+  do Playwright NÃO dispara os pointer events em contexto `hasTouch` — usar
+  `dispatchEvent(new PointerEvent(...))` para testar o canvas; foi o que deu o falso
+  negativo primeiro.)
+- **Ajuste feito:** `CanvasAssinatura` ganhou `h-56 sm:h-40` — mais alto no celular
+  (224px; tela estreita tem menos espaço para o traço), padrão no tablet (160px).
+- **Recomendação registrada:** tablet segue como aparelho recomendado da visita (mais
+  confortável para digitar muito dado + o cliente assinar); celular liberado como
+  alternativa. "Instalar como app" (PWA offline) continua pendente (#19) e vale igual
+  para Android e iOS.
+
 **Sessão #18c (2026-08-04) — Leitura dos campos de PGR (conferência + relatório):**
 - **Decisão de UX (com o usuário):** conferência = **resumo compacto** (texto corrido),
   relatório do técnico interno = **detalhado, agrupado por categoria** (espelha o PGR).
