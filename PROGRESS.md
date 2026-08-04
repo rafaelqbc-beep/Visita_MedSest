@@ -2,11 +2,11 @@
 
 ## Status Geral
 **Última atualização:** 2026-08-04
-**Sessão atual:** #18c
-**Status:** ✅ **CAMPOS DE PGR COMPLETOS (ponta a ponta)** — o técnico registra
-riscos/EPIs/medições no tablet, o cliente os revê na conferência antes de assinar, e o
-técnico interno os lê no relatório (agrupados por categoria) além do Word/PDF. **O
-item C fechou.** Próximo: retomar os pendentes 17–20 (cadastros admin, offline, PWA, deploy).
+**Sessão atual:** #22
+**Status:** ✅ **OFFLINE COMPLETO (#18 fechado, 3 etapas).** O técnico registra a visita
+sem sinal (setor/cargo/foto) e tudo sincroniza sozinho ao reconectar, com mapeamento de
+id local→real e upload das fotos. Indicador de pendências/sync no header. Assinatura e
+finalizar seguem online (escopo combinado). **Pendentes: #19 PWA, #20 deploy.**
 
 ---
 
@@ -86,6 +86,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
+_Sessão #22 — **offline #18 FECHADO (Etapa 3, sincronização).** Ao reconectar, a outbox
+esvazia sozinha: replay na ordem, id local→real, upload das fotos, reconciliação
+(criar+remover offline não vai ao servidor) e indicador de sync/pendências no header.
+10/10 no E2E de sync + 10/10 recon/foto + 19/19 online (sem regressão). **Próximos: #19
+PWA (fecha o "instalar como app" + fotos/telas offline no reload) e #20 deploy.**_
+
 _Sessão #21 — **offline #18, Etapa 2 de 3 (captura) entregue.** Sem sinal já dá para
 criar/editar/remover setor, cargo e foto: grava no espelho com id local (`local-…`) e
 enfileira na outbox (IndexedDB) para sincronizar depois. 10/10 no E2E offline + 19/19 no
@@ -116,8 +122,8 @@ Ordem original (retomar depois de A–C):
 > assinaturas dentro). **É o momento de validar com a operação antes de investir no resto.**
 
 17. ~~Frontend: cadastros admin (clientes, usuários, unidades)~~ ✅ **feito na sessão #19**
-18. **Offline/IndexedDB + sincronização** (tirado da #14) — 🔄 **em andamento:** Etapa 1
-    (leitura) ✅ #20 · Etapa 2 (captura) ✅ #21 · **Etapa 3 (sync com mapeamento de ID) pendente**
+18. ~~**Offline/IndexedDB + sincronização**~~ ✅ **FECHADO** (Etapa 1 leitura #20 · Etapa 2
+    captura #21 · Etapa 3 sync #22)
 19. PWA (service worker, instalar no tablet)
 20. DEPLOY.md + subir no VPS
 
@@ -127,6 +133,42 @@ Ordem original (retomar depois de A–C):
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #22 (2026-08-04) — Offline #18, Etapa 3 (sincronização) — FECHA o offline:**
+- **`lib/offline/sync.ts` é o motor:** `sincronizar()` lê a outbox em ordem e reenvia cada
+  op. **Mapeamento de id local→real:** um `criarSetor`/`criarCargo`/`criarFoto` devolve o id
+  real; ele entra num `Map` e os ops seguintes resolvem `setor_id`/`alvoId` locais por ele.
+  Ex. provado: cargo criado offline num setor local sobe com o `setor_id` real resolvido.
+- **🔑 Mapeamento PERSISTIDO (store `mapeamentos`, db v3):** se o sync falha no meio, o
+  `criarSetor` que já subiu foi removido da fila — sem persistir o mapa, a próxima tentativa
+  não saberia o id real do setor para o cargo dependente (orfanaria). Grava-se local→real a
+  cada create; limpa quando a fila zera.
+- **Reconciliação (efêmeros):** id criado E removido offline nunca vai ao servidor — o par
+  `criar`+`remover` (e ops filhas do setor efêmero) é descartado da fila sem tocar na API.
+  Provado: criar+remover setor offline → servidor segue intacto.
+- **Para no 1º erro, preservando a ordem** (não pula o que falhou; tenta de novo no próximo
+  gatilho). DELETE/PUT com 404 (já não existe no servidor) conta como feito (idempotente).
+- **Gatilho e status:** `store/SincronizacaoContext.tsx` (provider dentro do AuthProvider).
+  Sincroniza ao **(re)conectar** (evento `online`) e ao montar, **sempre confirmando a
+  conexão de verdade** (`conexaoReal` = GET `/api/health`; `navigator.onLine` mente). A
+  outbox avisa mudanças por um evento `medsest:fila` (disparado em `fila.ts`), e o
+  `OfflineIndicator` do header vira o painel de status: "N a enviar" (clicável p/ tentar),
+  "Sincronizando…", "Erro — tocar p/ tentar", "Offline — N salva(s)", "Online". Após o sync,
+  invalida `['setores',cid]`/`['chamado',cid]` → releitura autoritativa troca os ids locais
+  pelos reais no espelho.
+- **Fotos:** o binário guardado offline (`fotosPendentes`) sobe como multipart no sync, com
+  `setor_id` resolvido; gravado em `uploads/fotos` no servidor (provado). Offline aparece
+  via data URL.
+- **⚠️ Concorrência:** `sincronizar()` tem guarda `rodando` (module-level) contra execução
+  dupla; o provider também tem `rodando` ref. Auth: se o refresh token expirou após muito
+  tempo offline, o sync 401→refresh falha→logout; a outbox **persiste** e sobe após novo
+  login. (Edge conhecido, aceitável.)
+- **Validado: 10/10 (sync ponta a ponta, servidor conferido por login independente) + 10/10
+  (reconciliação + foto) + 19/19 (online, sem regressão).** `tsc` limpo. Testes sujam o
+  banco (o sync escreve de verdade) → resetado ao seed.
+- **Relação com o #19 (PWA):** o reload TOTAL offline ainda quebra (precisa do service
+  worker cachear o app shell), e as fotos já sincronizadas não abrem offline (precisam do
+  SW cachear `/uploads`). Isso é exatamente o #19. O offline de captura/sync está completo.
 
 **Sessão #21 (2026-08-04) — Offline #18, Etapa 2 (captura):**
 - **🔑 A DESCOBERTA QUE DESTRAVOU TUDO — o React Query PAUSA mutações E refetches quando

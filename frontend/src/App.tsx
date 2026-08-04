@@ -23,6 +23,7 @@ import ConferenciaPage from '@/pages/visitas/ConferenciaPage'
 import ExecucaoVisitaPage from '@/pages/visitas/ExecucaoVisitaPage'
 import VisitasPage from '@/pages/visitas/VisitasPage'
 import { AuthProvider } from '@/store/AuthContext'
+import { SincronizacaoProvider } from '@/store/SincronizacaoContext'
 
 /**
  * As permissões de cada rota vêm de `lib/navegacao.ts`, a mesma fonte do menu
@@ -54,7 +55,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
+        <SincronizacaoProvider>
+          <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/sem-permissao" element={<SemPermissao />} />
 
@@ -109,8 +111,9 @@ export default function App() {
             </Route>
           </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </SincronizacaoProvider>
       </AuthProvider>
     </BrowserRouter>
   )

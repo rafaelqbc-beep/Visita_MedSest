@@ -136,3 +136,11 @@ export async function removerFotoPendente(localId: string): Promise<void> {
     /* best-effort */
   }
 }
+
+export async function lerFotoPendente(localId: string): Promise<Blob | undefined> {
+  try {
+    return await (await getDb()).get('fotosPendentes', localId)
+  } catch {
+    return undefined
+  }
+}

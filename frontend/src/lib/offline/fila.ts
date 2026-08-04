@@ -29,9 +29,16 @@ export interface ItemFila {
   op: OperacaoFila
 }
 
+/** Avisa quem observa a outbox (o indicador de sincronização) que ela mudou. */
+function avisarMudanca(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('medsest:fila'))
+}
+
 export async function enfileirar(op: Operacao): Promise<number> {
   const registro: OperacaoFila = { ...op, momento: new Date().toISOString() }
-  return (await getDb()).add('fila', registro)
+  const chave = await (await getDb()).add('fila', registro)
+  avisarMudanca()
+  return chave
 }
 
 export async function listarFila(): Promise<ItemFila[]> {
@@ -47,6 +54,7 @@ export async function listarFila(): Promise<ItemFila[]> {
 
 export async function removerDaFila(chave: number): Promise<void> {
   await (await getDb()).delete('fila', chave)
+  avisarMudanca()
 }
 
 export async function tamanhoFila(): Promise<number> {

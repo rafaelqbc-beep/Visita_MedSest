@@ -14,10 +14,13 @@ interface MedSestDB extends DBSchema {
   setores: { key: string; value: SetorDetalhe[] }
   fila: { key: number; value: OperacaoFila }
   fotosPendentes: { key: string; value: Blob }
+  /** id local (`local-…`) → id real do servidor. Persiste o mapeamento entre
+   *  tentativas de sync, para uma falha parcial não orfanar registros dependentes. */
+  mapeamentos: { key: string; value: string }
 }
 
 const NOME = 'medsest-offline'
-const VERSAO = 2
+const VERSAO = 3
 
 let dbPromise: Promise<IDBPDatabase<MedSestDB>> | null = null
 
@@ -30,6 +33,8 @@ export function getDb(): Promise<IDBPDatabase<MedSestDB>> {
         // v2
         if (!db.objectStoreNames.contains('fila')) db.createObjectStore('fila', { autoIncrement: true })
         if (!db.objectStoreNames.contains('fotosPendentes')) db.createObjectStore('fotosPendentes')
+        // v3
+        if (!db.objectStoreNames.contains('mapeamentos')) db.createObjectStore('mapeamentos')
       },
     })
   }
