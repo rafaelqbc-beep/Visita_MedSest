@@ -1,0 +1,26 @@
+# MedSest Visita — serviço systemd do backend (FastAPI/uvicorn)
+#
+# Instalar:
+#   sudo cp deploy/medsest-api.service /etc/systemd/system/medsest-api.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now medsest-api
+#
+# Ver logs:   journalctl -u medsest-api -f
+# Reiniciar:  sudo systemctl restart medsest-api   (SEMPRE após rodar migrations!)
+
+[Unit]
+Description=MedSest Visita API (FastAPI/uvicorn)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=medsest
+Group=medsest
+WorkingDirectory=/var/www/medsest/app/backend
+EnvironmentFile=/var/www/medsest/app/backend/.env
+ExecStart=/var/www/medsest/app/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

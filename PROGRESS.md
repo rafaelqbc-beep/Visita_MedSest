@@ -86,11 +86,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
-_Sessão #24 — **relatório gerencial do dashboard** (pedido de um gestor). Botão "Gerar
-relatório" no dashboard → página A4 para imprimir/salvar como PDF, com os mesmos gráficos,
-um **resumo automático** dos números e os filtros aplicados. 14/14 no E2E + prévia de
-impressão inspecionada. **E-mail (só e-mail, WhatsApp descartado por ora) segue pendente
-de credenciais SMTP.** Falta o #20 (deploy)._
+_Sessão #24 — **relatório gerencial do dashboard** + **#20 deploy PREPARADO** + nota de
+arquitetura SaaS registrada. O relatório (imprimir/PDF com resumo automático) está pronto
+(14/14). O deploy tem runbook completo ([DEPLOY.md](DEPLOY.md)) + configs de produção —
+falta só **executar no VPS** (infra do usuário). **E-mail: só e-mail, pendente das
+credenciais SMTP.** Plano: usuário roda na MedSest, valida, depois evolui para SaaS
+([ARQUITETURA_SAAS.md](ARQUITETURA_SAAS.md))._
 
 _Sessão #23 — **PWA #19 FECHADO.** App instalável (botão "Instalar app" quando o navegador
 oferece) + service worker cacheando o shell (reload offline não dá tela branca) +
@@ -137,7 +138,11 @@ Ordem original (retomar depois de A–C):
 18. ~~**Offline/IndexedDB + sincronização**~~ ✅ **FECHADO** (Etapa 1 leitura #20 · Etapa 2
     captura #21 · Etapa 3 sync #22)
 19. ~~PWA (service worker, instalar no tablet)~~ ✅ **feito na sessão #23**
-20. DEPLOY.md + subir no VPS ← *último pendente*
+20. DEPLOY.md + subir no VPS — 🟡 **runbook + configs PRONTOS (#24)**; falta executar no VPS
+    (infra do usuário: domínio + servidor). Ver [DEPLOY.md](DEPLOY.md).
+
+**Direção futura (registrada, NÃO fazer agora):** evoluir para SaaS multi-tenant — ver
+[ARQUITETURA_SAAS.md](ARQUITETURA_SAAS.md). Plano: validar com a MedSest primeiro.
 
 **Pendente sem sessão definida (depende de terceiros):**
 - Envio real de e-mail/WhatsApp — aguardando credenciais SMTP/Twilio (o usuário avisou em 15/07 que está providenciando).
@@ -145,6 +150,36 @@ Ordem original (retomar depois de A–C):
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #24b (2026-08-05) — #20 deploy PREPARADO + nota SaaS:**
+- **Decisão do usuário:** rodar na MedSest primeiro (single-tenant), validar, **depois**
+  evoluir para SaaS. A nota de direção ficou em **`ARQUITETURA_SAAS.md`** (banco único +
+  `tenant_id` + RLS; e-mail via provedor central da plataforma, remetente por tenant;
+  config self-service por tenant). **Nada de multi-tenant agora** — o catálogo em texto e
+  o e-mail agnóstico já deixam a porta aberta de graça.
+- **Deploy = runbook + configs, NÃO execução.** Não dá para subir no VPS daqui (precisa do
+  domínio + servidor do usuário). Entregue: **`DEPLOY.md`** (VPS Ubuntu, bare-metal:
+  systemd + nginx + certbot/HTTPS, passo a passo), **`deploy/medsest-api.service`**
+  (systemd), **`backend/.env.production.example`**, e o **`nginx/medsest.conf`** refinado.
+- **Ajustes de produção feitos:**
+  - **Bundle dividido** (`vite.config` `manualChunks`): o chunk único de 956 KB virou
+    `recharts` (299 KB) + `react-vendor` (153 KB) + `vendor` (343 KB) + app (164 KB). Sem
+    mais aviso de chunk grande; libs pesadas cacheiam separado entre deploys.
+  - **nginx:** o service worker do vite-plugin-pwa é **`sw.js`** (não `service-worker.js`)
+    — a regra de no-cache foi corrigida. Adicionados gzip, cache imutável em `/assets/`,
+    e cabeçalhos de segurança básicos.
+  - Confirmado: o **cookie de refresh vira `secure` só com `ENVIRONMENT=production`**
+    (`routers/auth.py`) — documentado como passo obrigatório no DEPLOY.
+- **Bootstrap de produção elegante:** NÃO rodar `seed.py` (cria dados de teste). Rodar as
+  migrations + criar **um admin** por um snippet Python (no DEPLOY.md); o resto (unidades,
+  usuários, clientes) o admin cria pela **tela de cadastros da #17**. Uploads ficam em
+  `/var/www/medsest/uploads` (fora do código, sobrevivem ao redeploy).
+- **⚠️ Reforçado no DEPLOY:** reiniciar o `medsest-api` **sempre** após migrations
+  (`InvalidCachedStatementError` do asyncpg — plano em cache vs. schema novo). E a extensão
+  `pgcrypto` precisa ser criada como superusuário antes das migrations.
+- **Não testável daqui (honesto):** o build de produção foi verificado (`npm run build` ok,
+  chunks divididos, `dist` com sw.js/manifest que o nginx casa), mas o deploy ponta a ponta
+  só o usuário valida no VPS. `tsc` limpo.
 
 **Sessão #24 (2026-08-05) — Relatório gerencial do dashboard + decisão de mensagens:**
 - **Decisão do usuário:** só **e-mail**; **WhatsApp descartado por ora** (o custo do

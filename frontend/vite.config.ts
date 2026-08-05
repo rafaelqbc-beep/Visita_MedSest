@@ -66,6 +66,22 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    // Separa as bibliotecas pesadas em chunks próprios: a 1ª carga no tablet via
+    // celular fica mais leve e o cache do navegador reaproveita entre deploys
+    // (o código do app muda mais que o dos vendors).
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('recharts') || id.includes('d3-')) return 'recharts'
+          if (id.includes('react-dom') || id.includes('react-router') || id.includes('/react/'))
+            return 'react-vendor'
+          return 'vendor'
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {
