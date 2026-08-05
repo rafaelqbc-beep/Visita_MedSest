@@ -86,6 +86,12 @@ rastreabilidade que o e-mail dava antes.
 ---
 
 ## 🔄 Em andamento
+_Sessão #24 — **relatório gerencial do dashboard** (pedido de um gestor). Botão "Gerar
+relatório" no dashboard → página A4 para imprimir/salvar como PDF, com os mesmos gráficos,
+um **resumo automático** dos números e os filtros aplicados. 14/14 no E2E + prévia de
+impressão inspecionada. **E-mail (só e-mail, WhatsApp descartado por ora) segue pendente
+de credenciais SMTP.** Falta o #20 (deploy)._
+
 _Sessão #23 — **PWA #19 FECHADO.** App instalável (botão "Instalar app" quando o navegador
 oferece) + service worker cacheando o shell (reload offline não dá tela branca) +
 `navigateFallback` p/ rotas de SPA + cache de `/uploads` (fotos abrem offline) + **sessão
@@ -139,6 +145,39 @@ Ordem original (retomar depois de A–C):
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #24 (2026-08-05) — Relatório gerencial do dashboard + decisão de mensagens:**
+- **Decisão do usuário:** só **e-mail**; **WhatsApp descartado por ora** (o custo do
+  onboarding da Meta — conta Business, número, templates aprovados — não compensa agora).
+  O código já é agnóstico: só `_enviar_email` muda quando as credenciais SMTP chegarem.
+- **Pedido de um gestor:** gerar um **relatório gerencial** do dashboard (com os filtros)
+  para discutir com a equipe. Decisões (com o usuário): **visão de impressão → Salvar como
+  PDF** (preserva os gráficos que agradaram, sem dependência nova) + **resumo automático**
+  dos números no topo.
+- **Como foi feito, reusando o dashboard (sem duplicar gráficos):**
+  - Extraí o corpo do dashboard para **`components/dashboard/DashboardConteudo.tsx`** (KPIs
+    + gráficos), com prop `variante: 'tela' | 'relatorio'`. Fonte única: `DashboardPage` e o
+    relatório renderizam o mesmo. **`CardGrafico` ganhou `variante`**: em 'relatorio' esconde
+    o botão Gráfico/Tabela (não dá para alternar no papel) e mostra sempre o gráfico. Prop
+    default = comportamento antigo → dashboard intacto.
+  - **`pages/dashboard/RelatorioGerencialPage.tsx`** (rota `/dashboard/relatorio`, **fora do
+    AppLayout** para a impressão sair sem sidebar/header): cabeçalho (período, escopo, quem
+    gerou), **resumo automático** (`resumo()` monta o parágrafo com visitas concluídas,
+    conversão, tempos médios, tipo predominante, PGRs pendentes), o `DashboardConteudo` em
+    modo relatório, e o rodapé sobre a semântica dos filtros.
+  - Botão **"Gerar relatório"** no dashboard leva os filtros por **query string**; o
+    relatório lê com `useSearchParams`. Escopo por perfil vem do backend (gestor → só a
+    unidade dele), sem esforço extra.
+  - **CSS de impressão** em `index.css` (`@media print`): esconde `.no-print` (a barra de
+    ações), tira sombras, força os pares `lg:grid-cols-2` a **coluna única** no A4,
+    `break-inside: avoid` nos cards, `@page margin 12mm`.
+- **Validado: 14/14 no E2E** (dashboard não quebrou com o refator, botão gera com os filtros
+  na URL, cabeçalho/resumo/gráficos presentes, sem toggle no modo relatório, barra some na
+  impressão) + **prévia de impressão inspecionada** (`emulateMedia print`): A4 limpo, uma
+  coluna, resumo com os números certos. `tsc` limpo. Dashboard é só leitura → banco intacto.
+- **⚠️ Sobre a impressão:** o `window.print()` abre o diálogo do navegador; o usuário
+  escolhe "Salvar como PDF". No celular via `http://IP` funciona igual (não depende de SW);
+  só a formatação fina do PDF depende do navegador. Recharts (SVG) imprime nítido.
 
 **Sessão #23 (2026-08-04) — PWA (#19):**
 - O `vite-plugin-pwa` já tinha manifest + ícones (#9b). Faltava o comportamento offline:

@@ -10,11 +10,22 @@ interface CardGraficoProps {
   tabela: ReactNode
   children: ReactNode
   className?: string
+  /** 'relatorio' esconde o botão Gráfico/Tabela (não dá para alternar no papel)
+   *  e mostra sempre o gráfico. Usado na versão para impressão do dashboard. */
+  variante?: 'interativo' | 'relatorio'
 }
 
-export function CardGrafico({ titulo, descricao, tabela, children, className }: CardGraficoProps) {
+export function CardGrafico({
+  titulo,
+  descricao,
+  tabela,
+  children,
+  className,
+  variante = 'interativo',
+}: CardGraficoProps) {
   const [verTabela, setVerTabela] = useState(false)
   const idConteudo = useId()
+  const interativo = variante === 'interativo'
 
   return (
     <section className={cn('rounded-xl border border-border bg-surface p-4 shadow-card', className)}>
@@ -23,27 +34,29 @@ export function CardGrafico({ titulo, descricao, tabela, children, className }: 
           <h2 className="font-semibold tracking-tightish text-content">{titulo}</h2>
           {descricao && <p className="mt-0.5 text-sm text-content-secondary">{descricao}</p>}
         </div>
-        <button
-          type="button"
-          onClick={() => setVerTabela((v) => !v)}
-          aria-pressed={verTabela}
-          aria-controls={idConteudo}
-          className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5
-            text-xs font-medium text-content-label transition-colors hover:bg-accent
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          {verTabela ? (
-            <>
-              <BarChart3 className="h-3.5 w-3.5" aria-hidden /> Gráfico
-            </>
-          ) : (
-            <>
-              <Table2 className="h-3.5 w-3.5" aria-hidden /> Tabela
-            </>
-          )}
-        </button>
+        {interativo && (
+          <button
+            type="button"
+            onClick={() => setVerTabela((v) => !v)}
+            aria-pressed={verTabela}
+            aria-controls={idConteudo}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5
+              text-xs font-medium text-content-label transition-colors hover:bg-accent
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            {verTabela ? (
+              <>
+                <BarChart3 className="h-3.5 w-3.5" aria-hidden /> Gráfico
+              </>
+            ) : (
+              <>
+                <Table2 className="h-3.5 w-3.5" aria-hidden /> Tabela
+              </>
+            )}
+          </button>
+        )}
       </div>
-      <div id={idConteudo}>{verTabela ? tabela : children}</div>
+      <div id={idConteudo}>{interativo && verTabela ? tabela : children}</div>
     </section>
   )
 }

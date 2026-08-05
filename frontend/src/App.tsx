@@ -16,6 +16,7 @@ import UnidadesPage from '@/pages/cadastros/UnidadesPage'
 import UsuarioFormPage from '@/pages/cadastros/UsuarioFormPage'
 import UsuariosPage from '@/pages/cadastros/UsuariosPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
+import RelatorioGerencialPage from '@/pages/dashboard/RelatorioGerencialPage'
 import RelatorioDetalhePage from '@/pages/relatorios/RelatorioDetalhePage'
 import RelatoriosPage from '@/pages/relatorios/RelatoriosPage'
 import CargoEditorPage from '@/pages/visitas/CargoEditorPage'
@@ -61,6 +62,10 @@ export default function App() {
           <Route path="/sem-permissao" element={<SemPermissao />} />
 
           <Route element={<ProtectedRoute />}>
+            {/* Relatório gerencial: página cheia (fora do AppLayout) para a
+                impressão sair limpa, sem a sidebar/header. */}
+            <Route path="/dashboard/relatorio" element={<RelatorioGerencialPage />} />
+
             <Route element={<AppLayout />}>
               <Route path="/" element={<Inicio />} />
               {/* Dashboard: todos os perfis; o backend recorta os números */}

@@ -53,3 +53,33 @@
       outline-none transition focus:ring-2 focus:ring-primary;
   }
 }
+
+/* ---------- Impressão (relatório gerencial → Salvar como PDF) ---------- */
+@media print {
+  /* Elementos de tela que não devem sair no papel (barra de ações, etc.). */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Fundo branco e sem sombras — economiza tinta e fica limpo em PDF. */
+  body {
+    background: #fff;
+  }
+  .relatorio-print .shadow-card {
+    box-shadow: none !important;
+  }
+
+  /* Os pares de gráfico (lg:grid-cols-2) empilham em coluna única no A4. */
+  .relatorio-print .lg\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Não quebrar um card no meio entre páginas. */
+  .relatorio-print section {
+    break-inside: avoid;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}
