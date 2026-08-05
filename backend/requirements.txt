@@ -38,3 +38,6 @@ apscheduler==3.11.0
 
 # --- Rate limiting (endpoints públicos) ---
 slowapi==0.1.9
+
+# --- E-mail (SMTP assincrono) ---
+aiosmtplib==3.0.2

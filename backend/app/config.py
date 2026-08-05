@@ -31,11 +31,17 @@ class Settings(BaseSettings):
     VALIDACAO_TOKEN_EXPIRE_DAYS: int = 7
 
     # --- E-mail (SMTP) ---
-    SMTP_HOST: str = "smtp.gmail.com"
+    # Padrão aponta para o Resend (serviço transacional): SMTP_USER = "resend" e
+    # SMTP_PASSWORD = a API key. Funciona igual com Gmail/M365/hospedagem.
+    SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "MedSest Visita"
+    # Endereço remetente (num domínio verificado no provedor, ex.: nao-responda@medsest.com.br).
+    SMTP_FROM_EMAIL: str = ""
+    # Para onde vão as respostas (opcional; ex.: contato@medsest.com.br).
+    SMTP_REPLY_TO: str = ""
 
     # --- WhatsApp (Twilio) ---
     TWILIO_ACCOUNT_SID: str = ""

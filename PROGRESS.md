@@ -145,11 +145,44 @@ Ordem original (retomar depois de A–C):
 [ARQUITETURA_SAAS.md](ARQUITETURA_SAAS.md). Plano: validar com a MedSest primeiro.
 
 **Pendente sem sessão definida (depende de terceiros):**
-- Envio real de e-mail/WhatsApp — aguardando credenciais SMTP/Twilio (o usuário avisou em 15/07 que está providenciando).
+- **E-mail: IMPLEMENTADO (#24c), aguardando só as credenciais para ativar.** O usuário vai
+  usar o **Resend** (serviço transacional) — precisa criar a conta, verificar o domínio
+  `medsest.com.br` (DNS na Locaweb) e gerar a API key. Aí é preencher o `.env`
+  (`SMTP_HOST=smtp.resend.com`, `SMTP_USER=resend`, `SMTP_PASSWORD=<api key>`,
+  `SMTP_FROM_EMAIL`) e reiniciar. **WhatsApp descartado.**
 
 ---
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
+
+**Sessão #24c (2026-08-05) — Envio real de e-mail (SMTP) implementado:**
+- **Decisão:** e-mail via **Resend** (serviço transacional), não a caixa da empresa — melhor
+  entregabilidade, não usa o inbox de ninguém, e já é o "sender central" do futuro SaaS
+  (ver ARQUITETURA_SAAS.md). Mas o código é **agnóstico**: funciona com Resend, Gmail, M365
+  ou hospedagem — muda só o `.env`.
+- **`services/notificacoes.py` — `_enviar_email` agora envia de verdade** via **aiosmtplib**
+  (SMTP assíncrono, adicionado ao requirements). Monta `EmailMessage` (From com nome via
+  `formataddr`, Reply-To opcional, corpo texto), anexa o PDF do recibo (`add_attachment`
+  com tipo detectado por `mimetypes`), e envia com `use_tls=(porta==465)` /
+  `start_tls=(porta==587)` — cobre 465 (SSL), 587 (STARTTLS) e um SMTP de teste sem TLS.
+- **`_smtp_configurado()` mudou:** exige `SMTP_HOST` + `SMTP_FROM_EMAIL` (auth é **opcional**
+  — Resend usa auth, mas relays/servidor de teste podem não usar). Vazio → registra FALHOU
+  sem quebrar, como antes. **Nenhum call site mudou** — os 4 eventos passam a gravar ENVIADO
+  quando o `.env` estiver preenchido.
+- **Config nova:** `SMTP_FROM_EMAIL` (remetente num domínio verificado) e `SMTP_REPLY_TO`
+  (opcional). `.env.example` e `.env.production.example` agora trazem o exemplo do Resend.
+  O `SMTP_HOST` default virou **vazio** (era `smtp.gmail.com`) para não "meio-configurar".
+- **Validado com SMTP local (aiosmtpd, só para teste — instalado e removido depois):**
+  - Envio direto **12/12**: From (nome+email), To, Subject, Reply-To, e o **anexo PDF**
+    (nome, `application/pdf`, bytes intactos). Sem SMTP → FALHOU sem estourar.
+  - Recibo ponta a ponta **4/4**: `notificar_recibo_cliente` gera o **PDF real (23 KB)**,
+    anexa, envia, e o log vira **ENVIADO**.
+- **⚠️ Achado (não é bug):** os chamados **#2 e #6 já têm um log RECIBO_CLIENTE FALHOU** —
+  foram finalizados pelo usuário no celular ANTES desta implementação, quando o envio ainda
+  era stub. Isso é **correto** (o log de auditoria reflete que não saíram na época). Novas
+  finalizações, com o `.env` preenchido, gravam ENVIADO. Custou tempo no teste porque a
+  query pegava a linha antiga — resolvido identificando a linha nova por diff de id.
+- `pip check` limpo (aiosmtplib fica; aiosmtpd foi removido). App importa.
 
 **Sessão #24b (2026-08-05) — #20 deploy PREPARADO + nota SaaS:**
 - **Decisão do usuário:** rodar na MedSest primeiro (single-tenant), validar, **depois**

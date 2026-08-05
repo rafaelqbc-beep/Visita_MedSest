@@ -1,16 +1,23 @@
 """Envio e registro de notificações (e-mail / WhatsApp).
 
-ESTADO ATUAL: o envio real ainda não está implementado — falta configurar
-SMTP (fastapi-mail) e Twilio. Até lá, cada tentativa é registrada em
-`notificacoes_log` com status FALHOU e o motivo em `detalhes`.
+E-MAIL: implementado via SMTP (aiosmtplib). Fica inativo enquanto o `.env` não
+tiver `SMTP_HOST` + `SMTP_FROM_EMAIL` — nesse caso a tentativa é registrada em
+`notificacoes_log` como FALHOU, com o motivo em `detalhes`, sem quebrar o fluxo.
+Preenchidas as credenciais (ex.: Resend) e reiniciado o serviço, as MESMAS
+chamadas passam a registrar ENVIADO — nenhum call site muda.
 
-Isso é proposital: marcar ENVIADO para uma mensagem que nunca saiu tornaria o
-log de auditoria mentiroso. Quando as credenciais forem configuradas e o envio
-implementado, as mesmas chamadas passam a registrar ENVIADO.
+WHATSAPP: descartado por ora (decisão de 05/08). O stub segue registrando FALHOU.
+
+Marcar ENVIADO para algo que nunca saiu tornaria o log de auditoria mentiroso —
+por isso o status reflete o resultado real do envio.
 """
+import mimetypes
 import uuid
 from datetime import date
+from email.message import EmailMessage
+from email.utils import formataddr
 
+import aiosmtplib
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,7 +36,9 @@ EVENTO_RECIBO_CLIENTE = "RECIBO_CLIENTE"
 
 
 def _smtp_configurado() -> bool:
-    return bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
+    # Host e remetente são obrigatórios; a autenticação (user/senha) é opcional —
+    # há relays sem auth, e o servidor de teste local também não pede.
+    return bool(settings.SMTP_HOST and settings.SMTP_FROM_EMAIL)
 
 
 def _twilio_configurado() -> bool:
@@ -55,8 +64,34 @@ async def _enviar_email(
         resumo += f"; anexos: {', '.join(nome for nome, _ in anexos)}"
     if not _smtp_configurado():
         return False, f"SMTP não configurado; e-mail não enviado. {resumo}"
-    # TODO(quando houver credenciais): integrar fastapi-mail e enviar de verdade.
-    return False, f"Envio de e-mail ainda não implementado. {resumo}"
+
+    msg = EmailMessage()
+    msg["From"] = formataddr((settings.SMTP_FROM_NAME, settings.SMTP_FROM_EMAIL))
+    msg["To"] = destinatario
+    if settings.SMTP_REPLY_TO:
+        msg["Reply-To"] = settings.SMTP_REPLY_TO
+    msg["Subject"] = assunto
+    msg.set_content(corpo)
+    for nome, conteudo in anexos or []:
+        tipo = mimetypes.guess_type(nome)[0] or "application/octet-stream"
+        maintype, subtype = tipo.split("/", 1)
+        msg.add_attachment(conteudo, maintype=maintype, subtype=subtype, filename=nome)
+
+    porta = settings.SMTP_PORT
+    try:
+        await aiosmtplib.send(
+            msg,
+            hostname=settings.SMTP_HOST,
+            port=porta,
+            username=settings.SMTP_USER or None,
+            password=settings.SMTP_PASSWORD or None,
+            use_tls=porta == 465,       # SSL implícito (porta 465)
+            start_tls=porta == 587,     # STARTTLS na porta padrão (587)
+            timeout=20,
+        )
+    except Exception as exc:  # rede, auth, TLS: o motivo vai para o log
+        return False, f"Falha ao enviar e-mail para {destinatario}: {exc}. {resumo}"
+    return True, f"E-mail enviado para {destinatario}. {resumo}"
 
 
 async def _enviar_whatsapp(numero: str, mensagem: str) -> tuple[bool, str]:
