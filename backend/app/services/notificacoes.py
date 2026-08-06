@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.chamado import Chamado
 from app.models.cliente import Cliente
-from app.models.enums import ROTULO_TIPO_VISITA, CanalNotif, StatusNotif
+from app.models.enums import ROTULO_TIPO_VISITA, CanalNotif, RoleEnum, StatusNotif
 from app.models.notificacao import NotificacaoLog
 from app.models.usuario import Usuario
 
@@ -33,6 +33,7 @@ EVENTO_NOVO_CHAMADO = "NOVO_CHAMADO"
 EVENTO_REAGENDAMENTO = "REAGENDAMENTO"
 EVENTO_VISITA_LIBERADA = "VISITA_LIBERADA"
 EVENTO_RECIBO_CLIENTE = "RECIBO_CLIENTE"
+EVENTO_VISITA_CONCLUIDA_GESTOR = "VISITA_CONCLUIDA_GESTOR"
 
 
 def _smtp_configurado() -> bool:
@@ -260,6 +261,61 @@ async def notificar_visita_liberada(chamado_id: uuid.UUID, db: AsyncSession) -> 
         sucesso=sucesso,
         detalhes=detalhes,
     )
+
+
+async def notificar_visita_concluida_gestores(chamado_id: uuid.UUID, db: AsyncSession) -> None:
+    """E-mail aos gestores comerciais da unidade avisando que a visita foi concluída.
+
+    Eles acompanham o dia a dia pela tela; este e-mail é o aviso ativo de que aquele
+    chamado saiu de campo e está liberado para o PGR."""
+    chamado = await db.get(Chamado, chamado_id)
+    if chamado is None:
+        return
+
+    gestores = (
+        await db.scalars(
+            select(Usuario).where(
+                Usuario.role == RoleEnum.GESTOR_COMERCIAL,
+                Usuario.unidade_id == chamado.unidade_medsest_id,
+                Usuario.ativo.is_(True),
+            )
+        )
+    ).all()
+    if not gestores:
+        return
+
+    cliente = await db.get(Cliente, chamado.cliente_id)
+    tecnico_ext = (
+        await db.get(Usuario, chamado.tecnico_externo_id) if chamado.tecnico_externo_id else None
+    )
+    data_visita = chamado.dt_fim_visita.strftime("%d/%m/%Y") if chamado.dt_fim_visita else "-"
+    assunto = (
+        f"[MedSest] Visita concluída — {cliente.razao_social if cliente else 'cliente'} "
+        f"(chamado #{chamado.numero_chamado})"
+    )
+    corpo = (
+        f"A visita técnica foi concluída e assinada no local.\n\n"
+        f"  Chamado: #{chamado.numero_chamado}\n"
+        f"  Cliente: {cliente.razao_social if cliente else '-'}\n"
+        f"  Técnico externo: {tecnico_ext.nome if tecnico_ext else '-'}\n"
+        f"  Data da visita: {data_visita}\n"
+        f"  Assinado por: {chamado.assinatura_cliente_nome or '-'}\n\n"
+        f"Os dados já estão liberados para a elaboração do PGR pela equipe técnica interna.\n"
+        f"Acompanhe pelo painel do sistema."
+    )
+
+    for gestor in gestores:
+        sucesso, detalhes = await _enviar_email(gestor.email, assunto, corpo)
+        _registrar(
+            db,
+            chamado_id=chamado.id,
+            usuario_id=gestor.id,
+            email_destinatario=gestor.email,
+            tipo=CanalNotif.EMAIL,
+            evento=EVENTO_VISITA_CONCLUIDA_GESTOR,
+            sucesso=sucesso,
+            detalhes=detalhes,
+        )
 
 
 async def notificar_recibo_cliente(chamado_id: uuid.UUID, db: AsyncSession) -> None:

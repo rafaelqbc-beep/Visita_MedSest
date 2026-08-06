@@ -29,6 +29,7 @@ from app.services.notificacoes import (
     notificar_novo_chamado,
     notificar_reagendamento,
     notificar_recibo_cliente,
+    notificar_visita_concluida_gestores,
     notificar_visita_liberada,
 )
 from app.services.round_robin import get_proximo_tecnico_interno
@@ -458,6 +459,7 @@ async def finalizar_visita(
 
     await notificar_visita_liberada(chamado.id, db)
     await notificar_recibo_cliente(chamado.id, db)
+    await notificar_visita_concluida_gestores(chamado.id, db)
 
     return await _recarregar_item(chamado.id, db)
 

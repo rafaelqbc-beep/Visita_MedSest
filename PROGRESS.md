@@ -157,6 +157,29 @@ para produção** (boa prática — revogar uma sem afetar a outra). **WhatsApp 
 
 ## 🐛 Problemas conhecidos / Decisões técnicas
 
+**Sessão #25 (2026-08-06) — Base de usuários reais + notificação de visita concluída:**
+- **11 usuários reais da MedSest carregados** (script LOCAL, com PII, **fora do Git** —
+  fica no scratchpad). Perfis definidos com o usuário: 2 Admin (Rafael, Rebeca-diretora),
+  2 Gestor Comercial (Michella, **George** — "gestor dos técnicos", usa o escopo do
+  comercial), 4 Técnico Externo (Julio-consultor, + testes), 3 Técnico Interno. Senha
+  temporária `MedSest@2026` (trocar antes do uso real). Casos que não cabiam nos 4 perfis
+  e como foram resolvidos: **Julio** (interno+externo) → Externo por ora; **Rebeca**
+  (diretora só-leitura) → Admin por ora; **George** (gestor de operações) → Gestor Comercial.
+  Se um dia quiserem os papéis "certos" (Diretoria só-leitura, Gestor de Operações,
+  Técnico misto), é a fase SaaS/ajuste de código.
+- **Nova notificação: `notificar_visita_concluida_gestores`** — ao finalizar a visita, além
+  do técnico interno (liberação) e do cliente (recibo PDF), agora **todos os gestores
+  comerciais ATIVOS da unidade** recebem um e-mail avisando que a visita foi concluída
+  (pedido do usuário: Michella abre, George supervisiona — os dois querem saber). Um log
+  `VISITA_CONCLUIDA_GESTOR` por gestor. Chamada adicionada no `finalizar` de
+  `routers/chamados.py`.
+- **⚠️ A base local ainda mistura seed + reais:** o `gestor@medsest.com.br` do seed também
+  é gestor da unidade, então recebe a notificação nos testes. Em produção (base limpa) só
+  os gestores reais existem. Para a validação local, ou ignora, ou reseta para base limpa.
+- **Validado com SMTP local: 4/4** — envia 1 e-mail + 1 log ENVIADO por gestor da unidade,
+  destinatários incluem Michella + George, assunto certo (MIME-encoded com acento). `pip
+  check` limpo, app importa.
+
 **Sessão #24c (2026-08-05) — Envio real de e-mail (SMTP) implementado:**
 - **Decisão:** e-mail via **Resend** (serviço transacional), não a caixa da empresa — melhor
   entregabilidade, não usa o inbox de ninguém, e já é o "sender central" do futuro SaaS
