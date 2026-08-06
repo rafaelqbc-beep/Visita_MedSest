@@ -84,6 +84,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Libera o domínio do túnel Cloudflare (teste em HTTPS no celular fora da
+    // rede). Temporário — o Vite bloqueia hosts desconhecidos por padrão.
+    allowedHosts: ['.trycloudflare.com'],
     proxy: {
       '/api': { target: 'http://localhost:8000', changeOrigin: true },
       '/uploads': { target: 'http://localhost:8000', changeOrigin: true },
