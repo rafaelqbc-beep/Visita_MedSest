@@ -1,12 +1,13 @@
 # MedSest Visita — Progresso do Desenvolvimento
 
 ## Status Geral
-**Última atualização:** 2026-08-04
-**Sessão atual:** #23
-**Status:** ✅ **OFFLINE + PWA COMPLETOS (#18 e #19).** O técnico registra a visita sem
-sinal e tudo sincroniza ao reconectar (id local→real + fotos). O app **instala na tela
-inicial** e **funciona offline até num reload total** (shell no service worker + sessão
-offline + espelho). Assinatura/finalizar seguem online. **Falta só o #20 (deploy no VPS).**
+**Última atualização:** 2026-08-06
+**Sessão atual:** #25
+**Status:** ✅ **SISTEMA COMPLETO — falta só o deploy no VPS.** Todo o fluxo funciona:
+visita no tablet (com campos de PGR), offline+sync, PWA instalável, cadastros admin,
+relatório gerencial, e o **e-mail ao vivo** (Resend, validado com envio real — chega sem
+spam). WhatsApp descartado. **Único pendente: executar o #20 (deploy)** — runbook e configs
+prontos ([DEPLOY.md](DEPLOY.md)); depende da infra do usuário (domínio + servidor).
 
 ---
 
@@ -144,12 +145,13 @@ Ordem original (retomar depois de A–C):
 **Direção futura (registrada, NÃO fazer agora):** evoluir para SaaS multi-tenant — ver
 [ARQUITETURA_SAAS.md](ARQUITETURA_SAAS.md). Plano: validar com a MedSest primeiro.
 
-**Pendente sem sessão definida (depende de terceiros):**
-- **E-mail: IMPLEMENTADO (#24c), aguardando só as credenciais para ativar.** O usuário vai
-  usar o **Resend** (serviço transacional) — precisa criar a conta, verificar o domínio
-  `medsest.com.br` (DNS na Locaweb) e gerar a API key. Aí é preencher o `.env`
-  (`SMTP_HOST=smtp.resend.com`, `SMTP_USER=resend`, `SMTP_PASSWORD=<api key>`,
-  `SMTP_FROM_EMAIL`) e reiniciar. **WhatsApp descartado.**
+**E-mail — ✅ ATIVO E VALIDADO (#25):** Resend configurado, domínio `medsest.com.br`
+verificado (DKIM/SPF/MX no DNS da Locaweb, subdomínio `send`), e **envio real testado**
+(chegou, sem spam). Remetente `nao-responda@medsest.com.br`, reply-to `contato@medsest.com.br`.
+Textos dos 4 e-mails **aprovados como estão** pelo usuário. A **API key está só no `.env`
+local** (gitignored). **Para o deploy:** preencher os mesmos `SMTP_*` no `.env` de produção
+(o `.env.production.example` já traz o modelo do Resend); considerar uma **API key separada
+para produção** (boa prática — revogar uma sem afetar a outra). **WhatsApp descartado.**
 
 ---
 
